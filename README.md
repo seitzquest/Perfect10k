@@ -1,5 +1,5 @@
 # Perfect10k
-A simple route planner that I developed to assist me with taking 10k steps every day.
+A route planner that I developed to assist me with taking 10k steps every day.
 
 Some ideas for future work include:
 - Solve with actor-critic based on tile-based value function (may incorporate elevation data)
