@@ -6,4 +6,3 @@ Some ideas for future work include:
 - Try different heuristics for very dense areas i.e. n-fold cycle until average_nodes computationally managable
 
 ![](./route_animation/route.gif)
-![](./route_animation/route.png)
