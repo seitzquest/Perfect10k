@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfect10k - Intelligent Route Planner</title>
+    <meta name="description" content="Plan the perfect 10,000-step walking route with AI-powered semantic place matching">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/map.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h1>Perfect10k</h1>
+                <span class="nav-tagline">Intelligent Route Planner</span>
+            </div>
+            <div class="nav-menu" id="navMenu">
+                <a href="#" class="nav-link active" data-page="planner">Route Planner</a>
+                <a href="#" class="nav-link" data-page="history">History</a>
+                <a href="#" class="nav-link" data-page="preferences">Preferences</a>
+                <a href="#" class="nav-link" data-page="profile">Profile</a>
+            </div>
+            <div class="nav-auth" id="navAuth">
+                <button class="btn btn-outline" id="loginBtn">Login</button>
+                <button class="btn btn-primary" id="registerBtn">Register</button>
+            </div>
+            <div class="nav-user hidden" id="navUser">
+                <span class="user-email" id="userEmail"></span>
+                <button class="btn btn-outline" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Route Planner Page -->
+        <div class="page active" id="plannerPage">
+            <div class="planner-container">
+                <!-- Controls Panel -->
+                <div class="controls-panel">
+                    <div class="panel-header">
+                        <h2>Plan Your Route</h2>
+                        <p>Describe your preferences and let AI find the perfect 10k route</p>
+                    </div>
+                    
+                    <form class="route-form" id="routeForm">
+                        <div class="form-group">
+                            <label for="locationInput">Starting Location</label>
+                            <div class="location-input-group">
+                                <input 
+                                    type="text" 
+                                    id="locationInput" 
+                                    placeholder="Enter address or click on map"
+                                    class="input"
+                                >
+                                <button type="button" class="btn btn-outline" id="useCurrentLocation">
+                                    📍 Use Current Location
+                                </button>
+                            </div>
+                            <div class="location-coordinates hidden" id="locationCoordinates">
+                                <span id="coordsDisplay"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="preferencesInput">What do you like?</label>
+                            <textarea 
+                                id="preferencesInput" 
+                                placeholder="Describe places you enjoy... e.g., 'I love quiet parks near water, cafes with outdoor seating, and scenic viewpoints'"
+                                class="input textarea"
+                                rows="3"
+                            ></textarea>
+                            <div class="input-hint">
+                                Use natural language to describe your ideal walking environment
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="distanceInput">Target Distance (km)</label>
+                                <input 
+                                    type="number" 
+                                    id="distanceInput" 
+                                    value="8" 
+                                    min="2" 
+                                    max="20" 
+                                    step="0.5"
+                                    class="input"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="toleranceInput">Tolerance (km)</label>
+                                <input 
+                                    type="number" 
+                                    id="toleranceInput" 
+                                    value="1" 
+                                    min="0.1" 
+                                    max="3" 
+                                    step="0.1"
+                                    class="input"
+                                >
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="avoidRoads" checked>
+                                <span class="checkmark"></span>
+                                Prefer walking paths over roads
+                            </label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-large" id="planRouteBtn">
+                            <span class="btn-text">Plan My Route</span>
+                            <span class="btn-loading hidden">Planning...</span>
+                        </button>
+                    </form>
+
+                    <!-- Route Results -->
+                    <div class="route-results hidden" id="routeResults">
+                        <div class="result-header">
+                            <h3>Your Route</h3>
+                            <div class="result-stats">
+                                <div class="stat">
+                                    <span class="stat-value" id="routeDistance">8.2 km</span>
+                                    <span class="stat-label">Distance</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value" id="routeElevation">120 m</span>
+                                    <span class="stat-label">Elevation</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value" id="routePlaces">5</span>
+                                    <span class="stat-label">Points of Interest</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="matched-places" id="matchedPlaces">
+                            <!-- Dynamically populated -->
+                        </div>
+
+                        <div class="route-actions">
+                            <button class="btn btn-outline" id="exportGpxBtn">Export GPX</button>
+                            <button class="btn btn-outline" id="saveRouteBtn">Save Route</button>
+                            <button class="btn btn-primary" id="newRouteBtn">Plan New Route</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map Container -->
+                <div class="map-container">
+                    <div id="map" class="map"></div>
+                    <div class="map-loading hidden" id="mapLoading">
+                        <div class="loading-spinner"></div>
+                        <p>Loading map...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Other Pages (Hidden by default) -->
+        <div class="page" id="historyPage">
+            <div class="page-container">
+                <h2>Route History</h2>
+                <div class="history-list" id="historyList">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="preferencesPage">
+            <div class="page-container">
+                <h2>Your Preferences</h2>
+                <div class="preferences-container">
+                    <form class="preference-form" id="preferenceForm">
+                        <div class="form-group">
+                            <label for="newPreferenceInput">Add New Preference</label>
+                            <textarea 
+                                id="newPreferenceInput" 
+                                placeholder="Describe what you like..."
+                                class="input textarea"
+                                rows="2"
+                            ></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Preference</button>
+                    </form>
+                    
+                    <div class="preferences-list" id="preferencesList">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="profilePage">
+            <div class="page-container">
+                <h2>Profile</h2>
+                <div class="profile-info" id="profileInfo">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Login Modal -->
+    <div class="modal hidden" id="loginModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Login</h3>
+                <button class="modal-close" id="closeLoginModal">&times;</button>
+            </div>
+            <form class="modal-form" id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" class="input" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" class="input" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-large">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div class="modal hidden" id="registerModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Register</h3>
+                <button class="modal-close" id="closeRegisterModal">&times;</button>
+            </div>
+            <form class="modal-form" id="registerForm">
+                <div class="form-group">
+                    <label for="registerEmail">Email</label>
+                    <input type="email" id="registerEmail" class="input" required>
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" class="input" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" class="input" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-large">Register</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

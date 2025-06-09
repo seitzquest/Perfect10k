@@ -1,0 +1,383 @@
+/* Map Container */
+.map-container {
+    position: relative;
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    height: 100%;
+    min-height: 500px;
+}
+
+.map {
+    height: 100%;
+    width: 100%;
+    border-radius: var(--radius-lg);
+}
+
+.map-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.map-loading p {
+    margin: 0;
+    color: var(--gray-600);
+    font-weight: 500;
+}
+
+/* Leaflet Customizations */
+.leaflet-container {
+    font-family: var(--font-sans);
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    border: none;
+}
+
+.leaflet-popup-content {
+    margin: var(--space-4);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+}
+
+.leaflet-popup-tip {
+    box-shadow: none;
+}
+
+/* Custom Markers */
+.custom-marker {
+    background: var(--primary-600);
+    border: 3px solid white;
+    border-radius: 50%;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.marker-start {
+    background: var(--success);
+}
+
+.marker-end {
+    background: var(--error);
+}
+
+.marker-place {
+    background: #8b5cf6;
+}
+
+.marker-user {
+    background: var(--primary-600);
+}
+
+/* Route Line Styles */
+.route-path {
+    stroke: var(--primary-600);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+.route-path-animated {
+    stroke-dasharray: 10, 5;
+    animation: routeAnimation 3s linear infinite;
+}
+
+@keyframes routeAnimation {
+    from {
+        stroke-dashoffset: 0;
+    }
+    to {
+        stroke-dashoffset: 15;
+    }
+}
+
+/* Map Controls */
+.map-controls {
+    position: absolute;
+    top: var(--space-4);
+    left: var(--space-4);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.map-control-btn {
+    background: white;
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-3);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+}
+
+.map-control-btn:hover {
+    box-shadow: var(--shadow-lg);
+    background: var(--gray-50);
+}
+
+.map-control-btn:active {
+    transform: scale(0.95);
+}
+
+/* Location Info Panel */
+.location-info {
+    position: absolute;
+    bottom: var(--space-4);
+    left: var(--space-4);
+    right: var(--space-4);
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-4);
+    z-index: 1000;
+    transform: translateY(100%);
+    transition: transform var(--transition-base);
+}
+
+.location-info.visible {
+    transform: translateY(0);
+}
+
+.info-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.info-title {
+    font-weight: 600;
+    color: var(--gray-800);
+    margin: 0;
+}
+
+.info-close {
+    background: none;
+    border: none;
+    color: var(--gray-400);
+    cursor: pointer;
+    padding: 0;
+    font-size: 1.25rem;
+}
+
+.info-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-3);
+}
+
+.info-item {
+    text-align: center;
+}
+
+.info-value {
+    display: block;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--primary-600);
+}
+
+.info-label {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Route Progress */
+.route-progress {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-4);
+    z-index: 1000;
+    min-width: 200px;
+}
+
+.progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.progress-title {
+    font-weight: 600;
+    color: var(--gray-800);
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--gray-200);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: var(--space-3);
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary-600);
+    border-radius: 3px;
+    transition: width var(--transition-base);
+}
+
+.progress-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+/* Responsive Map */
+@media (max-width: 768px) {
+    .map-container {
+        border-radius: 0;
+        margin: 0 calc(-1 * var(--space-4));
+    }
+    
+    .map-controls {
+        top: var(--space-2);
+        left: var(--space-2);
+        gap: var(--space-1);
+    }
+    
+    .map-control-btn {
+        width: 36px;
+        height: 36px;
+        padding: var(--space-2);
+    }
+    
+    .location-info {
+        left: var(--space-2);
+        right: var(--space-2);
+        bottom: var(--space-2);
+    }
+    
+    .route-progress {
+        top: var(--space-2);
+        right: var(--space-2);
+        left: auto;
+        min-width: 160px;
+    }
+    
+    .info-content {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Map Popup Customizations */
+.popup-header {
+    font-weight: 600;
+    color: var(--gray-800);
+    margin-bottom: var(--space-2);
+}
+
+.popup-type {
+    display: inline-block;
+    background: var(--primary-100);
+    color: var(--primary-700);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: capitalize;
+    margin-bottom: var(--space-2);
+}
+
+.popup-description {
+    color: var(--gray-600);
+    font-size: 0.875rem;
+    margin-bottom: var(--space-3);
+}
+
+.popup-actions {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.popup-btn {
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+}
+
+/* Loading Overlay for Route Planning */
+.route-planning-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+    border-radius: var(--radius-lg);
+}
+
+.planning-animation {
+    width: 60px;
+    height: 60px;
+    margin-bottom: var(--space-4);
+    position: relative;
+}
+
+.planning-animation::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 3px solid var(--gray-200);
+    border-top: 3px solid var(--primary-600);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.planning-text {
+    color: var(--gray-700);
+    font-weight: 500;
+    text-align: center;
+    margin: 0;
+}
+
+.planning-subtext {
+    color: var(--gray-500);
+    font-size: 0.875rem;
+    text-align: center;
+    margin: var(--space-2) 0 0;
+}
