@@ -1,2 +1,118 @@
+# Environment files
 .env
+.env.local
+.env.*.local
+
+# Claude/AI assistant files
 .claude
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Package managers
+uv.lock
+*.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Application cache
+cache/
+*.json.cache
+
+# SSL certificates (generated locally)
+certs/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Runtime and process files
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Linting cache
+.ruff_cache/
+.mypy_cache/
+.pylint.d/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js (if any JS tools are added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

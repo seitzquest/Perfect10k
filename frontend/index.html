@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Perfect10k - Intelligent Route Planner</title>
-    <meta name="description" content="Plan the perfect 10,000-step walking route with AI-powered semantic place matching">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Perfect10k - Interactive Route Editor</title>
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -15,262 +17,285 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/map.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/map.css">
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <h1>Perfect10k</h1>
-                <span class="nav-tagline">Intelligent Route Planner</span>
+    <!-- Main Application -->
+    <div id="app" class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="brand">
+                    <h1>Perfect10k</h1>
+                </div>
+                <div class="controls">
+                    <!-- No controls needed -->
+                </div>
             </div>
-            <div class="nav-menu" id="navMenu">
-                <a href="#" class="nav-link active" data-page="planner">Route Planner</a>
-                <a href="#" class="nav-link" data-page="history">History</a>
-                <a href="#" class="nav-link" data-page="preferences">Preferences</a>
-                <a href="#" class="nav-link" data-page="profile">Profile</a>
-            </div>
-            <div class="nav-auth" id="navAuth">
-                <button class="btn btn-outline" id="loginBtn">Login</button>
-                <button class="btn btn-primary" id="registerBtn">Register</button>
-            </div>
-            <div class="nav-user hidden" id="navUser">
-                <span class="user-email" id="userEmail"></span>
-                <button class="btn btn-outline" id="logoutBtn">Logout</button>
-            </div>
-        </div>
-    </nav>
+        </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <!-- Route Planner Page -->
-        <div class="page active" id="plannerPage">
-            <div class="planner-container">
-                <!-- Controls Panel -->
-                <div class="controls-panel">
-                    <div class="panel-header">
-                        <h2>Plan Your Route</h2>
-                        <p>Describe your preferences and let AI find the perfect 10k route</p>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="panel">
+                    <h3>Route Planning</h3>
+                    
+                    <!-- Location Input -->
+                    <div class="form-group">
+                        <label for="locationInput">Starting Location</label>
+                        <div class="location-input-group">
+                            <input 
+                                type="text" 
+                                id="locationInput" 
+                                placeholder="Enter city or coordinates"
+                                class="input"
+                            >
+                            <button type="button" class="btn btn-sm" id="useCurrentLocation" title="Use Current Location">
+                                📍
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Route Preferences -->
+                    <div class="form-group">
+                        <label for="preferencesInput">Route Preferences</label>
+                        <textarea 
+                            id="preferencesInput" 
+                            placeholder="Describe your ideal walking environment..."
+                            class="input textarea"
+                            rows="3"
+                        >I love scenic nature paths through parks with quiet walkways near water</textarea>
+                    </div>
+
+                    <!-- Route Settings -->
+                    <div class="form-group">
+                        <label for="stepsInput">Target Steps: <span id="stepsValue">10,000</span></label>
+                        <input 
+                            type="range" 
+                            id="stepsInput" 
+                            value="10000" 
+                            min="1000" 
+                            max="20000" 
+                            step="1000"
+                            class="steps-slider"
+                        >
+                        <div class="slider-labels">
+                            <span>1k</span>
+                            <span>20k</span>
+                        </div>
+                    </div>
+
+                    <!-- Start Button -->
+                    <button id="startRoute" class="btn btn-primary btn-large">
+                        📍 Start
+                    </button>
+
+                </div>
+
+                <!-- Route Stats -->
+                <div class="panel" id="routeStats" style="display: none;">
+                    <h3>📊 Route Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat">
+                            <span class="stat-value" id="routeDistance">0 km</span>
+                            <span class="stat-label">Current Distance</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="routeProgress">0%</span>
+                            <span class="stat-label">Progress</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="estimatedDistance">~ km</span>
+                            <span class="stat-label">Est. Completion</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="waypointsCount">0</span>
+                            <span class="stat-label">Waypoints</span>
+                        </div>
                     </div>
                     
-                    <form class="route-form" id="routeForm">
-                        <div class="form-group">
-                            <label for="locationInput">Starting Location</label>
-                            <div class="location-input-group">
-                                <input 
-                                    type="text" 
-                                    id="locationInput" 
-                                    placeholder="Enter address or click on map"
-                                    class="input"
-                                >
-                                <button type="button" class="btn btn-outline" id="useCurrentLocation">
-                                    📍 Use Current Location
+                    <div class="stats-grid">
+                        <div class="stat">
+                            <span class="stat-value" id="routeScore">0%</span>
+                            <span class="stat-label">Score</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="routeArea">0 m²</span>
+                            <span class="stat-label">Area</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="routeNodes">0</span>
+                            <span class="stat-label">Nodes</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="routeConvexity">0%</span>
+                            <span class="stat-label">Convexity</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="routeConflicts">0</span>
+                            <span class="stat-label">Conflicts</span>
+                        </div>
+                    </div>
+                    
+                    <div class="route-actions">
+                        <button id="exportRoute" class="btn btn-outline">
+                            📥 Export GPX
+                        </button>
+                    </div>
+                </div>
+
+            </aside>
+
+            <!-- Map Container -->
+            <div class="map-container">
+                <div id="map" class="map"></div>
+                
+                <!-- Map Overlays -->
+                <div id="loadingOverlay" class="map-overlay loading-overlay hidden">
+                    <div class="loading-content">
+                        <div class="loading-spinner"></div>
+                        <p id="loadingText">Initializing...</p>
+                    </div>
+                </div>
+
+                <!-- Location Selection Overlay -->
+                <div id="locationOverlay" class="map-overlay location-overlay">
+                    <div class="location-content">
+                        <h3>📍 Add location to start...</h3>
+                    </div>
+                </div>
+
+                <!-- Minimal Loading Bar -->
+                <div id="loadingBar" class="loading-bar hidden">
+                    <div class="loading-progress"></div>
+                </div>
+
+                <!-- Map Controls -->
+                <div class="map-controls">
+                    <div class="control-group">
+                        <button id="zoomIn" class="map-control-btn" title="Zoom In">+</button>
+                        <button id="zoomOut" class="map-control-btn" title="Zoom Out">-</button>
+                    </div>
+                    <div class="control-group">
+                        <button id="centerRoute" class="map-control-btn" title="Center Route">🎯</button>
+                        <button id="fullscreen" class="map-control-btn" title="Fullscreen">⛶</button>
+                    </div>
+                </div>
+
+                <!-- Edit Mode Indicator -->
+                <div id="editModeIndicator" class="edit-mode-indicator hidden">
+                    <div class="edit-indicator-content">
+                        <span class="edit-icon">✏️</span>
+                        <span class="edit-text">Edit Mode</span>
+                        <span class="edit-hint">Tap nodes to add/remove</span>
+                    </div>
+                </div>
+
+                <!-- Mobile Controls Overlay -->
+                <div class="mobile-overlay" id="mobileOverlay">
+                    <div class="mobile-controls-widget">
+                        <div class="location-control">
+                            <input 
+                                type="text" 
+                                id="locationInputMobile" 
+                                placeholder="Enter location..."
+                                class="location-input-mobile"
+                            >
+                            <button id="useCurrentLocationMobile" class="btn-icon" title="Use Current Location">
+                                📍
+                            </button>
+                        </div>
+                        <div class="action-controls">
+                            <div class="btn-slot">
+                                <button id="settingsToggleMobile" class="btn-icon" title="Settings">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </button>
+                                <button id="downloadToggleMobile" class="btn-icon" title="Download Route">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7,10 12,15 17,10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
                                 </button>
                             </div>
-                            <div class="location-coordinates hidden" id="locationCoordinates">
-                                <span id="coordsDisplay"></span>
-                            </div>
+                            <button id="startRouteMobile" class="btn-start-mobile" title="Start Route">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5,3 19,12 5,21"></polygon>
+                                </svg>
+                            </button>
                         </div>
+                    </div>
+                </div>
 
-                        <div class="form-group">
-                            <label for="preferencesInput">What do you like?</label>
-                            <textarea 
-                                id="preferencesInput" 
-                                placeholder="Describe places you enjoy... e.g., 'I love quiet parks near water, cafes with outdoor seating, and scenic viewpoints'"
-                                class="input textarea"
-                                rows="3"
-                            ></textarea>
-                            <div class="input-hint">
-                                Use natural language to describe your ideal walking environment
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="distanceInput">Target Distance (km)</label>
-                                <input 
-                                    type="number" 
-                                    id="distanceInput" 
-                                    value="8" 
-                                    min="2" 
-                                    max="20" 
-                                    step="0.5"
-                                    class="input"
-                                >
-                            </div>
-                            <div class="form-group">
-                                <label for="toleranceInput">Tolerance (km)</label>
-                                <input 
-                                    type="number" 
-                                    id="toleranceInput" 
-                                    value="1" 
-                                    min="0.1" 
-                                    max="3" 
-                                    step="0.1"
-                                    class="input"
-                                >
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="avoidRoads" checked>
-                                <span class="checkmark"></span>
-                                Prefer walking paths over roads
-                            </label>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large" id="planRouteBtn">
-                            <span class="btn-text">Plan My Route</span>
-                            <span class="btn-loading hidden">Planning...</span>
-                        </button>
-                    </form>
-
-                    <!-- Route Results -->
-                    <div class="route-results hidden" id="routeResults">
-                        <div class="result-header">
-                            <h3>Your Route</h3>
-                            <div class="result-stats">
-                                <div class="stat">
-                                    <span class="stat-value" id="routeDistance">8.2 km</span>
-                                    <span class="stat-label">Distance</span>
-                                </div>
-                                <div class="stat">
-                                    <span class="stat-value" id="routeElevation">120 m</span>
-                                    <span class="stat-label">Elevation</span>
-                                </div>
-                                <div class="stat">
-                                    <span class="stat-value" id="routePlaces">5</span>
-                                    <span class="stat-label">Points of Interest</span>
-                                </div>
-                            </div>
+                <!-- Settings Overlay (Mobile) -->
+                <div class="settings-overlay" id="settingsOverlay">
+                    <div class="settings-content">
+                        <div class="settings-header">
+                            <h3>Route Settings</h3>
+                            <button id="closeSettingsMobile" class="btn-close" title="Close Settings">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
                         </div>
                         
-                        <div class="matched-places" id="matchedPlaces">
-                            <!-- Dynamically populated -->
-                        </div>
-
-                        <div class="route-actions">
-                            <button class="btn btn-outline" id="exportGpxBtn">Export GPX</button>
-                            <button class="btn btn-outline" id="saveRouteBtn">Save Route</button>
-                            <button class="btn btn-primary" id="newRouteBtn">Plan New Route</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Map Container -->
-                <div class="map-container">
-                    <div id="map" class="map"></div>
-                    <div class="map-loading hidden" id="mapLoading">
-                        <div class="loading-spinner"></div>
-                        <p>Loading map...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Other Pages (Hidden by default) -->
-        <div class="page" id="historyPage">
-            <div class="page-container">
-                <h2>Route History</h2>
-                <div class="history-list" id="historyList">
-                    <!-- Dynamically populated -->
-                </div>
-            </div>
-        </div>
-
-        <div class="page" id="preferencesPage">
-            <div class="page-container">
-                <h2>Your Preferences</h2>
-                <div class="preferences-container">
-                    <form class="preference-form" id="preferenceForm">
+                        <!-- Route Preferences -->
                         <div class="form-group">
-                            <label for="newPreferenceInput">Add New Preference</label>
+                            <label for="preferencesInputMobile">Route Preferences</label>
                             <textarea 
-                                id="newPreferenceInput" 
-                                placeholder="Describe what you like..."
+                                id="preferencesInputMobile" 
+                                placeholder="Describe your ideal walking environment..."
                                 class="input textarea"
-                                rows="2"
-                            ></textarea>
+                                rows="3"
+                            >I love scenic nature paths through parks with quiet walkways near water</textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary">Add Preference</button>
-                    </form>
-                    
-                    <div class="preferences-list" id="preferencesList">
-                        <!-- Dynamically populated -->
+
+                        <!-- Route Settings -->
+                        <div class="form-group">
+                            <label for="stepsInputMobile">Target Steps: <span id="stepsValueMobile">10,000</span></label>
+                            <input 
+                                type="range" 
+                                id="stepsInputMobile" 
+                                value="10000" 
+                                min="1000" 
+                                max="20000" 
+                                step="1000"
+                                class="steps-slider"
+                            >
+                            <div class="slider-labels">
+                                <span>1k</span>
+                                <span>20k</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <div class="page" id="profilePage">
-            <div class="page-container">
-                <h2>Profile</h2>
-                <div class="profile-info" id="profileInfo">
-                    <!-- Dynamically populated -->
-                </div>
             </div>
-        </div>
-    </main>
+        </main>
 
-    <!-- Login Modal -->
-    <div class="modal hidden" id="loginModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Login</h3>
-                <button class="modal-close" id="closeLoginModal">&times;</button>
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-content">
+                <span id="statusText">Ready to plan your route</span>
+                <div class="status-indicators">
+                    <span id="sessionId" class="session-id hidden"></span>
+                    <span id="networkStatus" class="network-status">●</span>
+                </div>
             </div>
-            <form class="modal-form" id="loginForm">
-                <div class="form-group">
-                    <label for="loginEmail">Email</label>
-                    <input type="email" id="loginEmail" class="input" required>
-                </div>
-                <div class="form-group">
-                    <label for="loginPassword">Password</label>
-                    <input type="password" id="loginPassword" class="input" required>
-                </div>
-                <button type="submit" class="btn btn-primary btn-large">Login</button>
-            </form>
-        </div>
+        </footer>
     </div>
-
-    <!-- Register Modal -->
-    <div class="modal hidden" id="registerModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Register</h3>
-                <button class="modal-close" id="closeRegisterModal">&times;</button>
-            </div>
-            <form class="modal-form" id="registerForm">
-                <div class="form-group">
-                    <label for="registerEmail">Email</label>
-                    <input type="email" id="registerEmail" class="input" required>
-                </div>
-                <div class="form-group">
-                    <label for="registerPassword">Password</label>
-                    <input type="password" id="registerPassword" class="input" required>
-                </div>
-                <div class="form-group">
-                    <label for="confirmPassword">Confirm Password</label>
-                    <input type="password" id="confirmPassword" class="input" required>
-                </div>
-                <button type="submit" class="btn btn-primary btn-large">Register</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Toast Notifications -->
-    <div class="toast-container" id="toastContainer"></div>
 
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/map.js"></script>
-    <script src="js/app.js"></script>
+    <script src="/static/js/debug.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/interactive_map.js"></script>
+    <script src="/static/js/app.js"></script>
 </body>
 </html>

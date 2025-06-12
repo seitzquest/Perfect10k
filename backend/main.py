@@ -1,59 +1,338 @@
-from fastapi import FastAPI, HTTPException
+"""
+Perfect10k Backend - Interactive Route Builder
+New simplified approach for user-driven route construction.
+"""
+
+import time
+import uuid
+from typing import Optional
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
+from pydantic import BaseModel
+from loguru import logger
 
-from api.routes import router as api_router
-from core.config import settings
-from core.database import engine, Base
+from interactive_router import InteractiveRouteBuilder
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("Starting Perfect10k API...")
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-    yield
-    # Shutdown
-    print("Shutting down Perfect10k API...")
-
-
-app = FastAPI(
-    title="Perfect10k Route Planner API",
-    description="Intelligent route planning with semantic place matching",
-    version="1.0.0",
-    lifespan=lifespan
+# Configure logging
+logger.remove()  # Remove default handler
+logger.add(
+    "perfect10k.log",
+    rotation="10 MB",
+    retention="7 days",
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
+)
+logger.add(
+    lambda msg: print(msg, end=""),  # Console output
+    level="INFO",
+    format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | <cyan>{function}</cyan> | {message}",
 )
 
-# CORS middleware
+app = FastAPI(
+    title="Perfect10k Interactive Route Builder",
+    description="User-driven route planning with step-by-step construction",
+    version="2.0"
+)
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["*"],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(api_router, prefix="/api")
+# Mount static files for frontend
+app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+
+# Global route builder instance
+route_builder = InteractiveRouteBuilder()
 
 
-@app.get("/")
-async def root():
-    return {"message": "Perfect10k Route Planner API", "version": "1.0.0"}
+# Request/Response Models
+class StartRouteRequest(BaseModel):
+    lat: float
+    lon: float
+    preference: str = "scenic parks and nature"
+    target_distance: int = 8000
+    client_id: Optional[str] = None  # Auto-generated if not provided
+
+
+class AddWaypointRequest(BaseModel):
+    session_id: str
+    node_id: int
+
+
+class FinalizeRouteRequest(BaseModel):
+    session_id: str
+    final_node_id: int
+
+
+# Utility function to generate client ID
+def get_client_id(request: Request, provided_id: Optional[str] = None) -> str:
+    """Generate or use provided client ID."""
+    if provided_id:
+        return provided_id
+    
+    # Generate client ID based on IP and user agent for consistency
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    return f"{client_ip}_{hash(user_agent) % 10000}"
+
+# API Endpoints
+@app.post("/api/start-session")
+async def start_session(request_data: StartRouteRequest, request: Request):
+    """Initialize a new interactive routing session (optimized with caching)."""
+    client_id = get_client_id(request, request_data.client_id)
+    logger.info(f"Starting route for client {client_id} at ({request_data.lat:.6f}, {request_data.lon:.6f})")
+    
+    try:
+        result = route_builder.start_route(
+            client_id=client_id,
+            lat=request_data.lat,
+            lon=request_data.lon,
+            preference=request_data.preference,
+            target_distance=request_data.target_distance
+        )
+        
+        logger.info(f"Route started for client {client_id} with {len(result['candidates'])} candidates")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to start route: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start route: {str(e)}")
+
+
+@app.post("/api/add-waypoint")
+async def add_waypoint(request: AddWaypointRequest):
+    """Add a waypoint to the current route."""
+    # Use session_id as client_id for compatibility
+    client_id = request.session_id
+    logger.info(f"Adding waypoint {request.node_id} to client {client_id}")
+    
+    try:
+        result = route_builder.add_waypoint(client_id, request.node_id)
+        
+        logger.info(f"Waypoint added. Route now {result['route_stats']['current_distance']:.0f}m")
+        return result
+        
+    except ValueError as e:
+        logger.warning(f"Waypoint addition failed: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to add waypoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add waypoint: {str(e)}")
+
+
+@app.post("/api/finalize-route")
+async def finalize_route(request: FinalizeRouteRequest):
+    """Complete the route by connecting to final destination and back to start."""
+    # Use session_id as client_id for compatibility
+    client_id = request.session_id
+    logger.info(f"Finalizing route for client {client_id} with destination {request.final_node_id}")
+    
+    try:
+        result = route_builder.finalize_route(client_id, request.final_node_id)
+        
+        logger.success(f"Route finalized: {result['route_stats']['total_distance']:.0f}m")
+        return result
+        
+    except ValueError as e:
+        logger.warning(f"Route finalization failed: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to finalize route: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to finalize route: {str(e)}")
+
+
+@app.get("/api/route-status/{client_id}")
+async def get_route_status(client_id: str):
+    """Get current route status and statistics."""
+    try:
+        result = route_builder.get_route_status(client_id)
+        return result
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get route status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get route status: {str(e)}")
+
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """List all active client sessions (for debugging)."""
+    sessions = []
+    current_time = time.time()
+    
+    for client_id, session in route_builder.client_sessions.items():
+        session_info = {
+            "client_id": client_id,
+            "created_at": session.created_at,
+            "last_access": session.last_access,
+            "age_minutes": (current_time - session.created_at) / 60,
+            "graph_center": session.graph_center,
+            "has_active_route": session.active_route is not None
+        }
+        
+        if session.active_route:
+            route = session.active_route
+            session_info.update({
+                "waypoints_count": len(route.current_waypoints),
+                "current_distance": route.total_distance,
+                "target_distance": route.target_distance,
+                "start_location": route.start_location
+            })
+        
+        sessions.append(session_info)
+    
+    return {
+        "active_sessions": sessions,
+        "cached_graphs": len(route_builder.graph_cache)
+    }
+
+
+@app.delete("/api/session/{client_id}")
+async def delete_session(client_id: str):
+    """Delete a client session (cleanup)."""
+    if client_id in route_builder.client_sessions:
+        del route_builder.client_sessions[client_id]
+        return {"success": True, "message": f"Client session {client_id} deleted"}
+    else:
+        raise HTTPException(status_code=404, detail="Client session not found")
+
+
+# Backwards compatibility with old API (for existing frontend)
+@app.post("/api/plan-route")
+async def plan_route_legacy(request: dict, http_request: Request):
+    """Legacy endpoint for backwards compatibility."""
+    logger.info("Legacy plan-route endpoint called - redirecting to optimized approach")
+    
+    # Convert old request to new format
+    start_request = StartRouteRequest(
+        lat=request.get("lat"),
+        lon=request.get("lon"),
+        preference=request.get("preference", "scenic parks and nature"),
+        target_distance=request.get("target_distance", 8000)
+    )
+    
+    # Start route and return first candidates as if it were a planned route
+    result = await start_session(start_request, http_request)
+    
+    # Convert to old format for compatibility
+    if result["candidates"]:
+        # Use first candidate as a simple route
+        candidate = result["candidates"][0]
+        
+        return {
+            "coordinates": [
+                [result["start_location"]["lat"], result["start_location"]["lon"]],
+                [candidate["lat"], candidate["lon"]],
+                [result["start_location"]["lat"], result["start_location"]["lon"]]  # Back to start
+            ],
+            "distance": candidate["estimated_completion"],
+            "value_score": candidate["value_score"],
+            "message": "Interactive routing started - use new endpoints for full functionality",
+            "session_id": result["session_id"],
+            "interactive_mode": True,
+            "candidates": result["candidates"]
+        }
+    else:
+        raise HTTPException(status_code=500, detail="No candidates found")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the main application page."""
+    try:
+        with open("../frontend/index.html", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Perfect10k - Interactive Route Builder</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .endpoint { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+                .method { color: #28a745; font-weight: bold; }
+                .path { color: #007bff; font-family: monospace; }
+            </style>
+        </head>
+        <body>
+            <h1>Perfect10k Interactive Route Builder</h1>
+            <p>User-driven route planning with step-by-step construction</p>
+            
+            <h2>New Interactive API Endpoints:</h2>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> <span class="path">/api/start-session</span>
+                <p>Initialize routing session with start point and get 3 initial candidates</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> <span class="path">/api/add-waypoint</span>
+                <p>Add waypoint to route and get 3 new candidates from that point</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">POST</span> <span class="path">/api/finalize-route</span>
+                <p>Complete circular route by connecting to final destination and back to start</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span> <span class="path">/api/route-status/{session_id}</span>
+                <p>Get current route state and statistics</p>
+            </div>
+            
+            <h2>Workflow Example:</h2>
+            <ol>
+                <li>POST /api/start-session → Get 3 candidates ~1km away</li>
+                <li>POST /api/add-waypoint → Add chosen candidate, get 3 new candidates</li>
+                <li>Repeat step 2 as needed, or...</li>
+                <li>POST /api/finalize-route → Complete circular route back to start</li>
+            </ol>
+            
+            <p><a href="/docs">Full API Documentation</a></p>
+        </body>
+        </html>
+        """
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "Perfect10k Interactive Route Builder v2.0",
+        "approach": "User-driven step-by-step route construction",
+        "features": [
+            "Interactive route building",
+            "Real-time candidate generation", 
+            "Conflict avoidance",
+            "Distance-based heuristics",
+            "Semantic preference matching",
+            "Disjunct path planning",
+            "Route completion estimation"
+        ],
+        "workflow": [
+            "Start session with location and preferences",
+            "Get 3 candidates at suitable distance", 
+            "Add waypoints interactively",
+            "Complete circular route",
+            "Export final route"
+        ],
+        "active_client_sessions": len(route_builder.client_sessions),
+        "cached_graphs": len(route_builder.graph_cache)
+    }
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.DEBUG,
-        log_level=settings.LOG_LEVEL.lower()
-    )
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
