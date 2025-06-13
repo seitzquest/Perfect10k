@@ -5,11 +5,11 @@ Starts both backend and frontend servers with a single command.
 """
 
 import os
-import sys
-import time
 import signal
 import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 

@@ -3,7 +3,6 @@ Semantic matching for route preferences.
 Enhanced semantic matching that translates natural language preferences into route values.
 """
 
-from typing import Dict
 
 
 class SemanticMatcher:
@@ -20,7 +19,7 @@ class SemanticMatcher:
     }
 
     @staticmethod
-    def create_value_function(preference: str) -> Dict[str, float]:
+    def create_value_function(preference: str) -> dict[str, float]:
         """Create sophisticated value function based on preferences."""
         preference_lower = preference.lower()
 
