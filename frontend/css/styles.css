@@ -654,6 +654,121 @@ label {
     gap: var(--space-md);
 }
 
+/* Mobile Distance Display */
+.mobile-distance-display {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+}
+
+.distance-info {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Battery-style progress container */
+.distance-battery {
+    position: relative;
+    width: 100%;
+    height: 32px;
+    background: var(--gray-100);
+    border: 2px solid var(--gray-300);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-width: 200px; /* Limit width for better proportions */
+}
+
+/* Battery fill that grows from left to right */
+.distance-battery-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    transition: all 0.5s ease;
+    border-radius: 2px;
+    
+    /* Default empty state */
+    background: var(--gray-300);
+}
+
+/* Progress-based fill colors */
+.distance-battery-fill[data-progress-range="0-25"] {
+    background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
+}
+
+.distance-battery-fill[data-progress-range="25-50"] {
+    background: linear-gradient(90deg, #f97316 0%, #fb923c 100%);
+}
+
+.distance-battery-fill[data-progress-range="50-75"] {
+    background: linear-gradient(90deg, #eab308 0%, #fbbf24 100%);
+}
+
+.distance-battery-fill[data-progress-range="75-90"] {
+    background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+}
+
+.distance-battery-fill[data-progress-range="90-100"] {
+    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.distance-battery-fill[data-progress="100"] {
+    background: linear-gradient(90deg, var(--success) 0%, #34d399 100%);
+    box-shadow: 0 0 12px rgba(52, 199, 89, 0.6);
+    animation: batteryComplete 2s ease-in-out infinite;
+}
+
+/* Distance text overlaid on top of battery */
+.distance-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--gray-700);
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+    z-index: 2;
+    pointer-events: none;
+}
+
+/* When battery has progress, make text white with dark shadow for better contrast */
+.distance-battery-fill:not([data-progress="0"]) ~ .distance-value {
+    color: var(--white);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Battery complete animation */
+@keyframes batteryComplete {
+    0%, 100% { 
+        box-shadow: 0 0 12px rgba(52, 199, 89, 0.6);
+    }
+    50% { 
+        box-shadow: 0 0 20px rgba(52, 199, 89, 0.8);
+    }
+}
+
+/* Battery terminal (small rectangle on the right side) */
+.distance-battery::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -6px;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 12px;
+    background: var(--gray-300);
+    border-radius: 0 2px 2px 0;
+}
+
 .location-control {
     flex: 1;
     display: flex;
@@ -689,10 +804,10 @@ label {
 }
 
 .btn-icon {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border: none;
-    border-radius: var(--radius);
+    border-radius: 50%;
     background: var(--white);
     color: var(--gray-700);
     display: flex;
@@ -702,6 +817,7 @@ label {
     transition: var(--transition);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-200);
+    font-size: 14px;
 }
 
 .btn-icon:hover {
@@ -710,11 +826,11 @@ label {
     box-shadow: var(--shadow-md);
 }
 
-.btn-generate {
-    width: 40px;
-    height: 40px;
+.btn-generate, .btn-start-mobile {
+    width: 44px;
+    height: 44px;
     border: none;
-    border-radius: var(--radius);
+    border-radius: 50%;
     background: var(--primary);
     color: var(--white);
     display: flex;
@@ -723,17 +839,17 @@ label {
     cursor: pointer;
     transition: var(--transition);
     box-shadow: var(--shadow-sm);
-    font-size: 16px;
-    font-weight: bold;
+    font-size: 14px;
+    font-weight: normal;
 }
 
-.btn-generate:hover:not(:disabled) {
+.btn-generate:hover:not(:disabled), .btn-start-mobile:hover:not(:disabled) {
     background: var(--primary-dark);
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
 }
 
-.btn-generate:disabled {
+.btn-generate:disabled, .btn-start-mobile:disabled {
     background: var(--gray-300);
     color: var(--gray-500);
     cursor: not-allowed;
@@ -809,10 +925,10 @@ label {
 }
 
 .btn-close {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border: none;
-    border-radius: var(--radius);
+    border-radius: 50%;
     background: var(--gray-100);
     color: var(--gray-600);
     display: flex;
@@ -957,9 +1073,9 @@ label {
         padding: var(--space-xs) var(--space-sm);
     }
     
-    .btn-icon, .btn-generate {
-        width: 36px;
-        height: 36px;
+    .btn-icon, .btn-generate, .btn-start-mobile, .btn-close {
+        width: 44px;
+        height: 44px;
         font-size: 14px;
     }
     

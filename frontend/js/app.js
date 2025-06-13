@@ -27,6 +27,29 @@ class Perfect10kApp {
     }
     
     /**
+     * Show loading bar with optional text
+     */
+    showLoading(text = 'Loading...') {
+        const loadingBar = document.getElementById('loadingBar');
+        if (loadingBar) {
+            loadingBar.classList.remove('hidden');
+        }
+        
+        // Update status text if provided
+        this.updateStatus(text, 'info');
+    }
+    
+    /**
+     * Hide loading bar
+     */
+    hideLoading() {
+        const loadingBar = document.getElementById('loadingBar');
+        if (loadingBar) {
+            loadingBar.classList.add('hidden');
+        }
+    }
+    
+    /**
      * Set up the main application
      */
     setupApp() {
@@ -159,6 +182,7 @@ class Perfect10kApp {
         
         // Location input and current location
         document.getElementById('useCurrentLocation').addEventListener('click', () => {
+            this.showLoading('Getting your location...');
             this.mapEditor.requestUserLocation();
         });
         
@@ -166,6 +190,7 @@ class Perfect10kApp {
         const useCurrentLocationMobile = document.getElementById('useCurrentLocationMobile');
         if (useCurrentLocationMobile) {
             useCurrentLocationMobile.addEventListener('click', () => {
+                this.showLoading('Getting your location...');
                 this.mapEditor.requestUserLocation();
             });
         }
@@ -231,12 +256,15 @@ class Perfect10kApp {
      */
     async startInteractiveRouting() {
         try {
+            this.showLoading('Loading area map...');
+            
             const locationInput = document.getElementById('locationInput').value.trim();
             
             if (locationInput) {
                 // Parse and use specified location
                 const location = await this.parseLocation(locationInput);
                 if (!location) {
+                    this.hideLoading();
                     this.showMessage('Invalid location format', 'error');
                     return;
                 }
@@ -250,12 +278,14 @@ class Perfect10kApp {
                         this.mapEditor.userLocation.lon
                     );
                 } else {
+                    this.hideLoading();
                     // Do nothing - user needs to set a location first
                     return;
                 }
             }
             
         } catch (error) {
+            this.hideLoading();
             console.error('Interactive routing failed:', error);
             this.showMessage(`Routing failed: ${error.message}`, 'error');
         }
@@ -905,3 +935,65 @@ const app = new Perfect10kApp();
 
 // Make app globally available for debugging
 window.perfect10kApp = app;
+
+// Debug function to test mobile UI changes
+window.testMobileUIChanges = function(progress = 85) {
+    console.log('Testing mobile UI battery with progress:', progress + '%');
+    
+    const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
+    const mobileLocationControl = document.getElementById('mobileLocationControl');
+    const mobileRouteDistance = document.getElementById('mobileRouteDistance');
+    const mobileBatteryFill = document.getElementById('mobileBatteryFill');
+    
+    console.log('Found elements:', {
+        mobileDistanceDisplay: !!mobileDistanceDisplay,
+        mobileLocationControl: !!mobileLocationControl,
+        mobileRouteDistance: !!mobileRouteDistance,
+        mobileBatteryFill: !!mobileBatteryFill
+    });
+    
+    if (mobileDistanceDisplay && mobileLocationControl) {
+        console.log('Switching to battery display...');
+        mobileDistanceDisplay.style.display = 'flex';
+        mobileLocationControl.style.display = 'none';
+        
+        if (mobileRouteDistance && mobileBatteryFill) {
+            mobileRouteDistance.textContent = '3.2 km';
+            window.interactiveMap.updateBatteryProgress(mobileBatteryFill, progress);
+            console.log('Updated battery with progress:', progress + '%');
+        }
+    } else {
+        console.error('Elements not found!');
+    }
+};
+
+// Test different progress levels
+window.testProgressColors = function() {
+    const progressLevels = [0, 15, 35, 65, 80, 95, 100];
+    let index = 0;
+    
+    function showNext() {
+        if (index < progressLevels.length) {
+            window.testMobileUIChanges(progressLevels[index]);
+            console.log(`Showing progress: ${progressLevels[index]}%`);
+            index++;
+            setTimeout(showNext, 2000); // Show each for 2 seconds
+        }
+    }
+    
+    showNext();
+};
+
+// Debug function to test switching back
+window.testMobileUIReset = function() {
+    console.log('Resetting mobile UI...');
+    
+    const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
+    const mobileLocationControl = document.getElementById('mobileLocationControl');
+    
+    if (mobileDistanceDisplay && mobileLocationControl) {
+        mobileDistanceDisplay.style.display = 'none';
+        mobileLocationControl.style.display = 'flex';
+        console.log('Reset to location control');
+    }
+};

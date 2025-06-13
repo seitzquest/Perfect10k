@@ -116,10 +116,12 @@ class InteractiveMapEditor {
             if (response.session_id && response.candidates) {
                 this.sessionId = response.session_id;
                 this.waypoints = [{lat, lon}];
-                this.routeBuilding = true;
                 
-                // Clear existing route display (but keep start marker)
-                this.clearRoute();
+                // Clear existing route display (but keep start marker) - but don't reset routeBuilding
+                this.clearRouteLayers();
+                
+                // Now set route building to true AFTER clearing
+                this.routeBuilding = true;
                 
                 // Show candidates
                 this.showCandidates(response.candidates);
@@ -127,6 +129,9 @@ class InteractiveMapEditor {
                 // Update UI
                 this.updateRouteStats(response.route_stats);
                 this.showRouteStats();
+                
+                // Update mobile UI to show distance instead of location controls
+                this.updateMobileDistanceDisplay(response.route_stats.current_distance / 1000, response.route_stats.progress * 100);
                 
                 // Route planning started - candidates displayed
             } else {
@@ -227,6 +232,9 @@ class InteractiveMapEditor {
                 if (window.perfect10kApp) {
                     window.perfect10kApp.onRouteCompleted();
                 }
+                
+                // Update mobile UI - keep showing distance for completed route
+                this.updateMobileDistanceDisplay(response.route_stats.total_distance / 1000, 100);
                 
                 // Route completed successfully
                 
@@ -398,9 +406,9 @@ class InteractiveMapEditor {
     }
     
     /**
-     * Clear all route-related layers (but preserve start marker)
+     * Clear only route layers without affecting route building state
      */
-    clearRoute() {
+    clearRouteLayers() {
         this.routeLayers.forEach(layer => {
             // Only remove if it's not a start marker
             if (layer.options && !layer.options.isStartMarker) {
@@ -411,6 +419,23 @@ class InteractiveMapEditor {
             layer.options && layer.options.isStartMarker
         );
         this.currentRoute = null;
+    }
+
+    /**
+     * Clear all route-related layers (but preserve start marker) and reset state
+     */
+    clearRoute() {
+        this.clearRouteLayers();
+        this.routeBuilding = false;
+        
+        // Reset mobile UI to show location controls
+        const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
+        const mobileLocationControl = document.getElementById('mobileLocationControl');
+        
+        if (mobileDistanceDisplay && mobileLocationControl) {
+            mobileDistanceDisplay.style.display = 'none';
+            mobileLocationControl.style.display = 'flex';
+        }
         
         // Reset app state when route is cleared
         if (window.perfect10kApp) {
@@ -426,6 +451,9 @@ class InteractiveMapEditor {
         document.getElementById('routeProgress').textContent = `${Math.round(stats.progress * 100)}%`;
         document.getElementById('estimatedDistance').textContent = `${(stats.estimated_final_distance / 1000).toFixed(1)} km`;
         document.getElementById('waypointsCount').textContent = stats.waypoints_count;
+        
+        // Update mobile distance display
+        this.updateMobileDistanceDisplay(stats.current_distance / 1000, stats.progress * 100);
     }
     
     /**
@@ -439,6 +467,9 @@ class InteractiveMapEditor {
         document.getElementById('routeConvexity').textContent = `${Math.round((stats.convexity || 0) * 100)}%`;
         document.getElementById('routeScore').textContent = `${Math.round((stats.score || 0) * 100)}%`;
         document.getElementById('routeConflicts').textContent = stats.conflicts || 0;
+        
+        // Update mobile distance display with final stats
+        this.updateMobileDistanceDisplay(stats.total_distance / 1000, 100);
     }
     
     /**
@@ -449,11 +480,76 @@ class InteractiveMapEditor {
     }
     
     /**
+     * Update mobile distance display and handle UI transitions
+     */
+    updateMobileDistanceDisplay(distanceKm, progressPercent) {
+        const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
+        const mobileLocationControl = document.getElementById('mobileLocationControl');
+        const mobileRouteDistance = document.getElementById('mobileRouteDistance');
+        const mobileBatteryFill = document.getElementById('mobileBatteryFill');
+        
+        if (mobileDistanceDisplay && mobileLocationControl && mobileRouteDistance && mobileBatteryFill) {
+            // Update distance value
+            mobileRouteDistance.textContent = `${distanceKm.toFixed(1)} km`;
+            
+            // Update battery fill width and color
+            this.updateBatteryProgress(mobileBatteryFill, progressPercent);
+            
+            // Show distance display and hide location controls when route is being built or completed
+            const hasActiveRoute = this.routeBuilding || this.currentRoute;
+            
+            if (hasActiveRoute) {
+                mobileDistanceDisplay.style.display = 'flex';
+                mobileLocationControl.style.display = 'none';
+            } else {
+                mobileDistanceDisplay.style.display = 'none';
+                mobileLocationControl.style.display = 'flex';
+            }
+        }
+    }
+    
+    /**
+     * Update battery fill element based on progress percentage
+     */
+    updateBatteryProgress(fillElement, progressPercent) {
+        if (!fillElement) return;
+        
+        // Remove all existing progress attributes
+        fillElement.removeAttribute('data-progress');
+        fillElement.removeAttribute('data-progress-range');
+        
+        const progress = Math.round(progressPercent);
+        
+        // Set the width of the fill based on progress
+        fillElement.style.width = `${Math.min(progress, 100)}%`;
+        
+        // Set the appropriate color based on progress range
+        if (progress === 100) {
+            fillElement.setAttribute('data-progress', '100');
+        } else if (progress >= 90) {
+            fillElement.setAttribute('data-progress-range', '90-100');
+        } else if (progress >= 75) {
+            fillElement.setAttribute('data-progress-range', '75-90');
+        } else if (progress >= 50) {
+            fillElement.setAttribute('data-progress-range', '50-75');
+        } else if (progress >= 25) {
+            fillElement.setAttribute('data-progress-range', '25-50');
+        } else if (progress > 0) {
+            fillElement.setAttribute('data-progress-range', '0-25');
+        } else {
+            fillElement.setAttribute('data-progress', '0');
+        }
+    }
+    
+    /**
      * Request user's current location
      */
     requestUserLocation() {
         if (!navigator.geolocation) {
             this.showMessage('Geolocation not supported by this browser', 'error');
+            if (window.perfect10kApp) {
+                window.perfect10kApp.hideLoading();
+            }
             return;
         }
         
@@ -467,13 +563,19 @@ class InteractiveMapEditor {
                 this.userLocation = { lat, lon };
                 this.setLocationAndUnblur(lat, lon);
                 
-                // Notify app that location was set
+                // Hide loading and show success
                 if (window.perfect10kApp) {
+                    window.perfect10kApp.hideLoading();
                     window.perfect10kApp.setLocation(lat, lon);
+                    window.perfect10kApp.showMessage('Location found', 'success');
                 }
             },
             (error) => {
                 console.warn('Location access failed:', error);
+                if (window.perfect10kApp) {
+                    window.perfect10kApp.hideLoading();
+                    window.perfect10kApp.showMessage('Could not get location. Please try again or enter manually.', 'error');
+                }
             },
             { timeout: 10000, enableHighAccuracy: true }
         );
@@ -563,6 +665,36 @@ class InteractiveMapEditor {
             candidatesCount: this.candidates.length,
             waypointsCount: this.waypoints.length
         };
+    }
+    
+    /**
+     * Debug function to test mobile UI
+     */
+    testMobileUI() {
+        console.log('Testing mobile UI...');
+        const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
+        const mobileLocationControl = document.getElementById('mobileLocationControl');
+        
+        if (mobileDistanceDisplay && mobileLocationControl) {
+            console.log('Elements found, testing visibility toggle...');
+            // Force show distance display
+            mobileDistanceDisplay.style.display = 'flex';
+            mobileLocationControl.style.display = 'none';
+            
+            // Update values
+            const mobileRouteDistance = document.getElementById('mobileRouteDistance');
+            const mobileRouteProgress = document.getElementById('mobileRouteProgress');
+            if (mobileRouteDistance && mobileRouteProgress) {
+                mobileRouteDistance.textContent = '2.5 km';
+                mobileRouteProgress.textContent = '75%';
+                console.log('Updated distance and progress values');
+            }
+        } else {
+            console.error('Mobile UI elements not found:', {
+                mobileDistanceDisplay: !!mobileDistanceDisplay,
+                mobileLocationControl: !!mobileLocationControl
+            });
+        }
     }
     
 }
