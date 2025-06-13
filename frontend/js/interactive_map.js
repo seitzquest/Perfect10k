@@ -16,6 +16,7 @@ class InteractiveMapEditor {
         this.candidateMarkers = [];
         this.routeLayers = [];
         this.userSetZoom = false;
+        this.feelingLuckyMode = false;
         
         this.initialize();
     }
@@ -49,7 +50,47 @@ class InteractiveMapEditor {
             this.userSetZoom = true;
         });
         
+        // Set up feeling lucky mode listeners
+        this.setupFeelingLuckyMode();
+        
         console.log('Interactive map editor initialized');
+    }
+    
+    /**
+     * Set up feeling lucky mode
+     */
+    setupFeelingLuckyMode() {
+        // Desktop checkbox
+        const feelingLuckyCheckbox = document.getElementById('feelingLucky');
+        if (feelingLuckyCheckbox) {
+            feelingLuckyCheckbox.addEventListener('change', (e) => {
+                this.feelingLuckyMode = e.target.checked;
+                
+                // Sync with mobile checkbox
+                const mobileCheckbox = document.getElementById('feelingLuckyMobile');
+                if (mobileCheckbox) {
+                    mobileCheckbox.checked = this.feelingLuckyMode;
+                }
+                
+                console.log('Feeling lucky mode:', this.feelingLuckyMode);
+            });
+        }
+        
+        // Mobile checkbox
+        const feelingLuckyMobileCheckbox = document.getElementById('feelingLuckyMobile');
+        if (feelingLuckyMobileCheckbox) {
+            feelingLuckyMobileCheckbox.addEventListener('change', (e) => {
+                this.feelingLuckyMode = e.target.checked;
+                
+                // Sync with desktop checkbox
+                const desktopCheckbox = document.getElementById('feelingLucky');
+                if (desktopCheckbox) {
+                    desktopCheckbox.checked = this.feelingLuckyMode;
+                }
+                
+                console.log('Feeling lucky mode:', this.feelingLuckyMode);
+            });
+        }
     }
     
     /**
@@ -266,6 +307,12 @@ class InteractiveMapEditor {
         this.clearCandidates();
         this.candidates = candidates;
         
+        // If feeling lucky mode is enabled, skip showing candidates and instantly process
+        if (this.feelingLuckyMode && candidates.length > 0) {
+            this.processLuckyRoute(candidates);
+            return;
+        }
+        
         candidates.forEach((candidate, index) => {
             const marker = L.marker([candidate.lat, candidate.lon], {
                 icon: L.divIcon({
@@ -307,6 +354,63 @@ class InteractiveMapEditor {
             const group = new L.featureGroup([...this.candidateMarkers]);
             this.map.fitBounds(group.getBounds().pad(0.1));
         }
+    }
+    
+    /**
+     * Process lucky route generation - instantly build complete route
+     */
+    processLuckyRoute(candidates) {
+        if (!this.feelingLuckyMode || candidates.length === 0) return;
+        
+        // Get current route stats to determine if we should finalize
+        const currentStats = this.getCurrentRouteStats();
+        const targetDistance = this.getTargetDistance();
+        const currentDistance = currentStats ? currentStats.current_distance : 0;
+        const progressPercent = currentDistance / targetDistance;
+        
+        // If we're close to target distance (80%+), finalize instantly
+        // Otherwise, add waypoint and continue
+        const shouldFinalize = progressPercent >= 0.8;
+        
+        // Select random candidate
+        const randomIndex = Math.floor(Math.random() * candidates.length);
+        const selectedCandidate = candidates[randomIndex];
+        
+        console.log(`Feeling lucky: ${shouldFinalize ? 'finalizing route' : 'adding waypoint'}`);
+        
+        // Instantly add waypoint or finalize
+        if (shouldFinalize) {
+            this.finalizeRoute(selectedCandidate.node_id);
+        } else {
+            this.addWaypoint(selectedCandidate.node_id);
+        }
+    }
+    
+    
+    /**
+     * Get current route statistics
+     */
+    getCurrentRouteStats() {
+        // Try to extract current stats from the UI
+        const distanceElement = document.getElementById('routeDistance');
+        if (distanceElement) {
+            const distanceText = distanceElement.textContent;
+            const distance = parseFloat(distanceText) * 1000; // Convert km to meters
+            return { current_distance: distance };
+        }
+        return null;
+    }
+    
+    /**
+     * Get target distance from settings
+     */
+    getTargetDistance() {
+        const stepsInput = document.getElementById('stepsInput') || document.getElementById('stepsInputMobile');
+        if (stepsInput) {
+            const steps = parseInt(stepsInput.value) || 10000;
+            return steps * 0.8; // Convert steps to meters
+        }
+        return 8000; // Default 10k steps = 8km
     }
     
     /**
@@ -596,7 +700,12 @@ class InteractiveMapEditor {
      * Set map location and update inputs
      */
     setLocationAndUnblur(lat, lon) {
-        this.map.setView([lat, lon], 15);
+        // Only set zoom if user hasn't manually adjusted it, otherwise just pan to location
+        if (this.userSetZoom) {
+            this.map.panTo([lat, lon]);
+        } else {
+            this.map.setView([lat, lon], 15);
+        }
         
         // Update location inputs
         const locationText = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;

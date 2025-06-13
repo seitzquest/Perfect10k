@@ -1148,4 +1148,75 @@ label {
     color: var(--primary);
     font-weight: 600;
 }
+
+/* Checkbox with Inline Text */
+.checkbox-with-text {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    padding-left: 0;
+}
+
+.checkbox-inline {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--gray-400);
+    border-radius: 3px;
+    background: var(--white);
+    cursor: pointer;
+    transition: var(--transition);
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.checkbox-inline:checked {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.checkbox-inline:checked::before {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.checkbox-inline:hover {
+    border-color: var(--gray-600);
+}
+
+.checkbox-inline:checked:hover {
+    border-color: var(--primary-dark);
+}
+
+/* Text positioned after the checkbox */
+.checkbox-inline::after {
+    content: 'Feeling lucky';
+    position: absolute;
+    left: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gray-900);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* Add the secondary text with a pseudo-element on the label */
+.checkbox-with-text::after {
+    content: '(generate route instantly)';
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--gray-500);
+    margin-left: 100px; /* Adjust based on "Feeling lucky" text width */
+    white-space: nowrap;
+}
 EOF < /dev/null
