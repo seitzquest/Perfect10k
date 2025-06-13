@@ -305,9 +305,37 @@ async def serve_frontend():
         """
 
 
+@app.get("/api/cache-stats")
+async def get_cache_statistics():
+    """Get comprehensive cache statistics."""
+    try:
+        stats = route_builder.get_cache_statistics()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get cache statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get cache statistics: {str(e)}")
+
+
+@app.post("/api/cleanup-sessions")
+async def cleanup_old_sessions(max_age_hours: float = 24.0):
+    """Clean up old client sessions."""
+    try:
+        route_builder.cleanup_old_sessions(max_age_hours)
+        return {
+            "success": True,
+            "message": f"Cleaned up sessions older than {max_age_hours} hours",
+            "remaining_sessions": len(route_builder.client_sessions)
+        }
+    except Exception as e:
+        logger.error(f"Failed to cleanup sessions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup sessions: {str(e)}")
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    cache_stats = route_builder.get_cache_statistics()
+    
     return {
         "status": "healthy",
         "service": "Perfect10k Interactive Route Builder v2.0",
@@ -319,7 +347,8 @@ async def health_check():
             "Distance-based heuristics",
             "Semantic preference matching",
             "Disjunct path planning",
-            "Route completion estimation"
+            "Route completion estimation",
+            "Persistent graph caching"
         ],
         "workflow": [
             "Start session with location and preferences",
@@ -328,8 +357,13 @@ async def health_check():
             "Complete circular route",
             "Export final route"
         ],
-        "active_client_sessions": len(route_builder.client_sessions),
-        "cached_graphs": len(route_builder.graph_cache)
+        "performance": {
+            "active_client_sessions": len(route_builder.client_sessions),
+            "legacy_cache_graphs": len(route_builder.graph_cache),
+            "persistent_cache_graphs": cache_stats["persistent_cache"]["total_graphs"],
+            "memory_cached_graphs": cache_stats["memory_cache"]["memory_cached_graphs"],
+            "cache_size_mb": cache_stats["persistent_cache"]["total_size_mb"]
+        }
     }
 
 

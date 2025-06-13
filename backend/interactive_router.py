@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from loguru import logger
 import osmnx as ox
 from core.semantic_matcher import SemanticMatcher
+from core.graph_cache import PersistentGraphCache
 
 
 @dataclass
@@ -57,10 +58,13 @@ class RouteState:
 class InteractiveRouteBuilder:
     """Builds routes interactively with client-session based approach."""
     
-    def __init__(self):
+    def __init__(self, cache_dir: str = "cache/graphs"):
         self.client_sessions: Dict[str, ClientSession] = {}
-        self.graph_cache: Dict[str, nx.MultiGraph] = {}  # Cache graphs by area
+        self.graph_cache: Dict[str, nx.MultiGraph] = {}  # Legacy in-memory cache
+        self.persistent_cache = PersistentGraphCache(cache_dir)
         self.semantic_matcher = SemanticMatcher()
+        
+        logger.info("Initialized InteractiveRouteBuilder with persistent graph cache")
         
     def get_or_create_client_session(self, client_id: str, lat: float, lon: float) -> ClientSession:
         """Get existing client session or create new one with cached graph."""
@@ -83,7 +87,8 @@ class InteractiveRouteBuilder:
         logger.info(f"Creating new session for client {client_id} at ({lat:.6f}, {lon:.6f})")
         
         # Load or get cached graph
-        graph = self._get_cached_graph(lat, lon)
+        radius = 8000  # 8km radius for good coverage
+        graph = self._get_cached_graph(lat, lon, radius)
         
         session = ClientSession(
             client_id=client_id,
@@ -103,25 +108,38 @@ class InteractiveRouteBuilder:
         distance = self._haversine_distance(lat, lon, center[0], center[1])
         return distance <= radius * 0.8  # Use 80% of radius for safety margin
     
-    def _get_cached_graph(self, lat: float, lon: float) -> nx.MultiGraph:
-        """Get graph from cache or load new one."""
-        # Create cache key based on rounded coordinates (to group nearby requests)
-        cache_key = f"{round(lat, 2)}_{round(lon, 2)}"
+    def _get_cached_graph(self, lat: float, lon: float, radius: float = 8000) -> nx.MultiGraph:
+        """Get graph from persistent cache or load new one with fallback caching."""
         
+        # First, try to get from persistent cache
+        graph = self.persistent_cache.get_graph(lat, lon, radius)
+        
+        if graph is not None:
+            logger.info(f"Using persistent cached graph for ({lat:.6f}, {lon:.6f})")
+            return graph
+        
+        # Fallback: check legacy in-memory cache
+        cache_key = f"{round(lat, 2)}_{round(lon, 2)}"
         if cache_key in self.graph_cache:
-            logger.info(f"Using cached graph for key {cache_key}")
+            logger.info(f"Using legacy cached graph for key {cache_key}")
             return self.graph_cache[cache_key]
         
-        # Load new graph
-        logger.info(f"Loading new graph for area {cache_key}")
-        graph = self._load_graph(lat, lon)
+        # Load new graph from OSM
+        logger.info(f"Loading new graph from OSM for ({lat:.6f}, {lon:.6f})")
+        graph = self._load_graph(lat, lon, radius)
         
-        # Cache it (limit cache size)
-        if len(self.graph_cache) >= 10:  # Max 10 cached graphs
-            # Remove oldest cache entry
+        # Store in persistent cache for future use
+        try:
+            cache_key_persistent = self.persistent_cache.store_graph(graph, (lat, lon), radius)
+            logger.info(f"Stored graph in persistent cache: {cache_key_persistent}")
+        except Exception as e:
+            logger.warning(f"Failed to store graph in persistent cache: {e}")
+        
+        # Also store in legacy cache for immediate reuse
+        if len(self.graph_cache) >= 5:  # Reduced from 10 since we have persistent cache
             oldest_key = list(self.graph_cache.keys())[0]
             del self.graph_cache[oldest_key]
-            logger.info(f"Removed old cached graph {oldest_key}")
+            logger.debug(f"Removed old legacy cached graph {oldest_key}")
         
         self.graph_cache[cache_key] = graph
         return graph
@@ -654,14 +672,14 @@ class InteractiveRouteBuilder:
         
         return abs(area) / 2.0
     
-    def _load_graph(self, lat: float, lon: float) -> nx.MultiGraph:
+    def _load_graph(self, lat: float, lon: float, radius: float = 8000) -> nx.MultiGraph:
         """Load OSM graph for the given location."""
-        logger.info(f"Loading OSM graph for ({lat:.6f}, {lon:.6f})")
+        logger.info(f"Loading OSM graph for ({lat:.6f}, {lon:.6f}) with radius {radius}m")
         
         try:
             G = ox.graph_from_point(
                 (lat, lon),
-                dist=8000,  # 8km radius for better coverage
+                dist=radius,
                 network_type="walk",
                 custom_filter=(
                     '["highway"~"path|track|footway|steps|bridleway|cycleway|'
@@ -682,3 +700,47 @@ class InteractiveRouteBuilder:
         except Exception as e:
             logger.error(f"Failed to load map data: {str(e)}")
             raise
+    
+    def get_cache_statistics(self) -> Dict:
+        """Get comprehensive cache statistics."""
+        persistent_stats = self.persistent_cache.get_cache_stats()
+        
+        return {
+            "persistent_cache": persistent_stats,
+            "memory_cache": {
+                "legacy_cache_size": len(self.graph_cache),
+                "active_sessions": len(self.client_sessions),
+                "memory_cached_graphs": len(self.persistent_cache.memory_cache)
+            },
+            "session_info": [
+                {
+                    "client_id": session.client_id,
+                    "created_at": session.created_at,
+                    "last_access": session.last_access,
+                    "graph_center": session.graph_center,
+                    "graph_radius": session.graph_radius,
+                    "has_active_route": session.active_route is not None,
+                    "graph_nodes": len(session.graph.nodes()),
+                    "graph_edges": len(session.graph.edges())
+                }
+                for session in self.client_sessions.values()
+            ]
+        }
+    
+    def cleanup_old_sessions(self, max_age_hours: float = 24.0):
+        """Clean up old client sessions to free memory."""
+        current_time = time.time()
+        max_age_seconds = max_age_hours * 3600
+        
+        sessions_to_remove = []
+        for client_id, session in self.client_sessions.items():
+            age = current_time - session.last_access
+            if age > max_age_seconds:
+                sessions_to_remove.append(client_id)
+        
+        for client_id in sessions_to_remove:
+            del self.client_sessions[client_id]
+            logger.info(f"Cleaned up old session for client {client_id}")
+        
+        if sessions_to_remove:
+            logger.info(f"Cleaned up {len(sessions_to_remove)} old sessions")
