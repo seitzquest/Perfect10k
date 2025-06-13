@@ -82,14 +82,14 @@ class PersistentGraphCache:
 
             # Load from disk if needed - this should populate the semantic grid
             logger.info(f"Loading semantic grid from disk for cache key: {cache_key}")
-            graph = self._load_cached_graph(cache_key)  # This will load into memory cache
+            self._load_cached_graph(cache_key)  # This will load into memory cache
             if cache_key in self.memory_cache:
                 entry = self.memory_cache[cache_key]
                 if entry.semantic_grid:
-                    logger.info(f"Successfully loaded semantic grid from disk")
+                    logger.info("Successfully loaded semantic grid from disk")
                     return entry.semantic_grid
                 else:
-                    logger.warning(f"Cache entry loaded but no semantic grid found")
+                    logger.warning("Cache entry loaded but no semantic grid found")
             else:
                 logger.warning(f"Failed to load cache entry {cache_key}")
         else:
@@ -178,7 +178,7 @@ class PersistentGraphCache:
                 coverage_radius = cached_radius  # Full coverage for same/smaller requests
             else:
                 coverage_radius = cached_radius * 0.9  # Safety margin for larger requests
-            
+
             required_coverage = distance + required_radius
 
             if required_coverage <= coverage_radius:

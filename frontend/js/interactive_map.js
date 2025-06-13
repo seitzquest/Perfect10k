@@ -15,6 +15,7 @@ class InteractiveMapEditor {
         this.waypoints = [];
         this.candidateMarkers = [];
         this.routeLayers = [];
+        this.userSetZoom = false;
         
         this.initialize();
     }
@@ -42,6 +43,11 @@ class InteractiveMapEditor {
         
         // Set up event handlers
         this.setupEventHandlers();
+        
+        // Track user zoom interactions
+        this.map.on('zoomstart', () => {
+            this.userSetZoom = true;
+        });
         
         console.log('Interactive map editor initialized');
     }
@@ -296,8 +302,8 @@ class InteractiveMapEditor {
             this.candidateMarkers.push(marker);
         });
         
-        // Fit map to show all candidates
-        if (candidates.length > 0) {
+        // Only fit map to show all candidates if user hasn't manually set zoom
+        if (candidates.length > 0 && !this.userSetZoom) {
             const group = new L.featureGroup([...this.candidateMarkers]);
             this.map.fitBounds(group.getBounds().pad(0.1));
         }
@@ -369,8 +375,10 @@ class InteractiveMapEditor {
             
             this.routeLayers.push(routeLine);
             
-            // Fit map to show the route progress
-            this.map.fitBounds(routeLine.getBounds().pad(0.1));
+            // Only fit map to show the route progress if user hasn't manually set zoom
+            if (!this.userSetZoom) {
+                this.map.fitBounds(routeLine.getBounds().pad(0.1));
+            }
         }
     }
     
@@ -400,8 +408,10 @@ class InteractiveMapEditor {
                 layer: routeLine
             };
             
-            // Fit map to route
-            this.map.fitBounds(routeLine.getBounds().pad(0.05));
+            // Only fit map to route if user hasn't manually set zoom
+            if (!this.userSetZoom) {
+                this.map.fitBounds(routeLine.getBounds().pad(0.05));
+            }
         }
     }
     
@@ -427,6 +437,7 @@ class InteractiveMapEditor {
     clearRoute() {
         this.clearRouteLayers();
         this.routeBuilding = false;
+        this.userSetZoom = false;
         
         // Reset mobile UI to show location controls
         const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');

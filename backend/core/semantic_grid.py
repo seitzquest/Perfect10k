@@ -8,8 +8,8 @@ import pickle
 from dataclasses import dataclass
 
 import networkx as nx
-from loguru import logger
 from core.poi_enrichment import POIEnricher
+from loguru import logger
 
 
 @dataclass
@@ -53,15 +53,15 @@ class SemanticGrid:
         min_lon, max_lon = min(lons), max(lons)
         self.bounds = (min_lat, min_lon, max_lat, max_lon)
         self.grid_origin = (min_lat, min_lon)
-        
+
         # Fetch POI data for the area
         center_lat = (min_lat + max_lat) / 2
         center_lon = (min_lon + max_lon) / 2
         radius = max(self._haversine_distance(min_lat, min_lon, max_lat, max_lon) / 2, 1000)  # At least 1km
-        
+
         self.poi_enricher = POIEnricher()
         self.poi_enricher.fetch_pois(center_lat, center_lon, radius)
-        
+
         poi_stats = self.poi_enricher.get_stats()
         logger.info(f"Enriched with {poi_stats['total_pois']} POIs: {poi_stats['features']}")
 
@@ -274,7 +274,7 @@ class SemanticGrid:
 
         # Use pre-computed dominant features, but skip path quality indicators
         path_quality_features = {"footway", "path", "track", "cycleway"}
-        
+
         for feature in cell.dominant_features:
             if cell.feature_scores[feature] > 0.15:  # Lower threshold to catch more POI features
                 # Skip path quality features - users don't care about infrastructure details
@@ -289,11 +289,11 @@ class SemanticGrid:
                 elif feature in ["cafe", "restaurant"]:
                     explanations.append(f"near {feature}s")
                 elif feature in ["shop"]:
-                    explanations.append(f"near shops")
+                    explanations.append("near shops")
                 elif feature in ["nature", "green"]:
                     explanations.append(f"{feature} area")
                 elif feature in ["historic", "monument"]:
-                    explanations.append(f"historic area")
+                    explanations.append("historic area")
                 elif feature == "tree":
                     explanations.append("tree-lined")
                 else:
@@ -306,10 +306,10 @@ class SemanticGrid:
     ) -> str:
         """Pre-build explanation template for fast lookup."""
         explanations = []
-        
+
         # Skip path quality features - users don't care about infrastructure details
         path_quality_features = {"footway", "path", "track", "cycleway"}
-        
+
         for feature in dominant_features:
             if feature_scores[feature] > 0.15:  # Lower threshold to catch more POI features
                 # Skip path quality features
@@ -324,11 +324,11 @@ class SemanticGrid:
                 elif feature in ["cafe", "restaurant"]:
                     explanations.append(f"near {feature}s")
                 elif feature in ["shop"]:
-                    explanations.append(f"near shops")
+                    explanations.append("near shops")
                 elif feature in ["nature", "green"]:
                     explanations.append(f"{feature} area")
                 elif feature in ["historic", "monument"]:
-                    explanations.append(f"historic area")
+                    explanations.append("historic area")
                 elif feature == "tree":
                     explanations.append("tree-lined")
                 else:
@@ -389,18 +389,18 @@ class SemanticGrid:
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance in meters."""
         R = 6371000  # Earth radius in meters
-        
+
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
         delta_lat = math.radians(lat2 - lat1)
         delta_lon = math.radians(lon2 - lon1)
-        
+
         a = (math.sin(delta_lat/2) * math.sin(delta_lat/2) +
              math.cos(lat1_rad) * math.cos(lat2_rad) *
              math.sin(delta_lon/2) * math.sin(delta_lon/2))
-        
+
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-        
+
         return R * c
 
     def save_to_disk(self, filepath: str) -> None:
