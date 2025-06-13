@@ -129,9 +129,9 @@ class InteractiveRouteBuilder:
         logger.info(f"Loading new graph from OSM for ({lat:.6f}, {lon:.6f})")
         graph = self._load_graph(lat, lon, radius)
 
-        # Store in persistent cache for future use
+        # Store in persistent cache for future use with semantic grid
         try:
-            cache_key_persistent = self.persistent_cache.store_graph(graph, (lat, lon), radius)
+            cache_key_persistent = self.persistent_cache.store_graph(graph, (lat, lon), radius, self.semantic_matcher)
             logger.info(f"Stored graph in persistent cache: {cache_key_persistent}")
         except Exception as e:
             logger.warning(f"Failed to store graph in persistent cache: {e}")
@@ -231,12 +231,29 @@ class InteractiveRouteBuilder:
 
         route = session.active_route
         try:
-            if hasattr(session.semantic_matcher, 'calculate_node_value'):
-                return session.semantic_matcher.calculate_node_value(node, route.value_function, session.graph)
+            # Check if we have a semantic grid for fast lookup
+            semantic_grid = self._get_semantic_grid_for_session(session)
+            if semantic_grid:
+                # Fast grid-based lookup
+                node_data = session.graph.nodes[node]
+                lat, lon = node_data['y'], node_data['x']
+                return semantic_grid.get_semantic_score(lat, lon, route.preference)
             else:
-                return 0.5, "Basic walkable area"
+                # Fallback to detailed analysis
+                if hasattr(session.semantic_matcher, 'calculate_node_value'):
+                    return session.semantic_matcher.calculate_node_value(node, route.value_function, session.graph)
+                else:
+                    return 0.5, "Basic walkable area"
         except Exception:
             return 0.5, "Unable to analyze location"
+
+    def _get_semantic_grid_for_session(self, session: ClientSession):
+        """Get semantic grid for session from cache if available."""
+        try:
+            lat, lon = session.graph_center
+            return self.persistent_cache.get_semantic_grid(lat, lon, session.graph_radius)
+        except Exception:
+            return None
 
     def start_route(self, client_id: str, lat: float, lon: float, preference: str, target_distance: int = 8000) -> dict:
         """

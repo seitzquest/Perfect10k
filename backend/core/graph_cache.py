@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import networkx as nx
+from core.semantic_grid import SemanticGrid
 from loguru import logger
 
 
@@ -18,12 +19,13 @@ class GraphCacheEntry:
     """Represents a cached graph with metadata."""
 
     def __init__(
-        self, graph: nx.MultiGraph, center: tuple[float, float], radius: float, cache_key: str
+        self, graph: nx.MultiGraph, center: tuple[float, float], radius: float, cache_key: str, semantic_grid: SemanticGrid = None
     ):
         self.graph = graph
         self.center = center  # (lat, lon)
         self.radius = radius
         self.cache_key = cache_key
+        self.semantic_grid = semantic_grid  # Pre-computed semantic grid
         self.created_at = time.time()
         self.last_accessed = time.time()
         self.access_count = 0
@@ -66,18 +68,55 @@ class PersistentGraphCache:
         logger.info(f"No cached graph found for ({lat:.6f}, {lon:.6f})")
         return None
 
-    def store_graph(self, graph: nx.MultiGraph, center: tuple[float, float], radius: float) -> str:
+    def get_semantic_grid(self, lat: float, lon: float, radius: float = 8000):
+        """Get semantic grid for the given location if available."""
+        cache_key = self._find_covering_cache_key(lat, lon, radius)
+
+        if cache_key:
+            # Check memory cache first
+            if cache_key in self.memory_cache:
+                entry = self.memory_cache[cache_key]
+                if entry.semantic_grid:
+                    logger.info(f"Found semantic grid in memory cache: {cache_key}")
+                    return entry.semantic_grid
+
+            # Load from disk if needed - this should populate the semantic grid
+            logger.info(f"Loading semantic grid from disk for cache key: {cache_key}")
+            graph = self._load_cached_graph(cache_key)  # This will load into memory cache
+            if cache_key in self.memory_cache:
+                entry = self.memory_cache[cache_key]
+                if entry.semantic_grid:
+                    logger.info(f"Successfully loaded semantic grid from disk")
+                    return entry.semantic_grid
+                else:
+                    logger.warning(f"Cache entry loaded but no semantic grid found")
+            else:
+                logger.warning(f"Failed to load cache entry {cache_key}")
+        else:
+            logger.warning(f"No covering cache key found for ({lat:.6f}, {lon:.6f})")
+
+        return None
+
+    def store_graph(self, graph: nx.MultiGraph, center: tuple[float, float], radius: float, semantic_matcher=None) -> str:
         """
-        Store a graph in the persistent cache.
+        Store a graph in the persistent cache with pre-computed semantic grid.
         Returns the cache key for the stored graph.
         """
         cache_key = self._generate_cache_key(center[0], center[1], radius)
 
+        # Build semantic grid if semantic_matcher provided
+        semantic_grid = None
+        if semantic_matcher:
+            logger.info(f"Building semantic grid for {cache_key}")
+            semantic_grid = SemanticGrid(cell_size_meters=100)  # 100m grid cells
+            semantic_grid.build_grid(graph, semantic_matcher)
+            logger.info(f"Semantic grid built with {len(semantic_grid.grid)} cells")
+
         # Store to disk
-        self._save_graph_to_disk(graph, cache_key, center, radius)
+        self._save_graph_to_disk(graph, cache_key, center, radius, semantic_grid)
 
         # Update in-memory cache
-        entry = GraphCacheEntry(graph, center, radius, cache_key)
+        entry = GraphCacheEntry(graph, center, radius, cache_key, semantic_grid)
         self.memory_cache[cache_key] = entry
 
         # Update index
@@ -91,6 +130,8 @@ class PersistentGraphCache:
             "node_count": len(graph.nodes()),
             "edge_count": len(graph.edges()),
             "file_size": self._get_file_size(cache_key),
+            "has_semantic_grid": semantic_grid is not None,
+            "grid_cells": len(semantic_grid.grid) if semantic_grid else 0,
         }
 
         self._save_cache_index()
@@ -98,7 +139,7 @@ class PersistentGraphCache:
         # Cleanup old entries if cache is too large
         self._cleanup_cache_if_needed()
 
-        logger.info(f"Stored graph {cache_key} with {len(graph.nodes())} nodes")
+        logger.info(f"Stored graph {cache_key} with {len(graph.nodes())} nodes and semantic grid")
         return cache_key
 
     def get_cache_stats(self) -> dict:
@@ -131,7 +172,13 @@ class PersistentGraphCache:
             distance = self._haversine_distance(lat, lon, center_lat, center_lon)
 
             # Check if this cached graph covers the required area
-            coverage_radius = cached_radius * 0.9  # Safety margin
+            # For same or smaller radius requests, allow full coverage
+            # For larger requests, apply safety margin
+            if required_radius <= cached_radius:
+                coverage_radius = cached_radius  # Full coverage for same/smaller requests
+            else:
+                coverage_radius = cached_radius * 0.9  # Safety margin for larger requests
+            
             required_coverage = distance + required_radius
 
             if required_coverage <= coverage_radius:
@@ -158,13 +205,24 @@ class PersistentGraphCache:
         # Load from disk
         try:
             graph_file = self.cache_dir / f"{cache_key}.graph"
+            semantic_file = self.cache_dir / f"{cache_key}.semantic"
 
             if not graph_file.exists():
                 logger.warning(f"Cache file not found: {graph_file}")
                 return None
 
+            # Load graph
             with open(graph_file, "rb") as f:
                 graph = pickle.load(f)
+
+            # Load semantic grid if available
+            semantic_grid = None
+            if semantic_file.exists():
+                semantic_grid = SemanticGrid()
+                if semantic_grid.load_from_disk(str(semantic_file)):
+                    logger.info(f"Loaded semantic grid with {len(semantic_grid.grid)} cells")
+                else:
+                    semantic_grid = None
 
             # Update access stats
             self._update_cache_index_access(cache_key)
@@ -175,7 +233,7 @@ class PersistentGraphCache:
                 center = (entry_info["center_lat"], entry_info["center_lon"])
                 radius = entry_info["radius"]
 
-                entry = GraphCacheEntry(graph, center, radius, cache_key)
+                entry = GraphCacheEntry(graph, center, radius, cache_key, semantic_grid)
                 entry.last_accessed = time.time()
                 entry.access_count = entry_info.get("access_count", 1) + 1
 
@@ -185,7 +243,8 @@ class PersistentGraphCache:
 
                 self.memory_cache[cache_key] = entry
 
-            logger.info(f"Loaded graph {cache_key} from disk cache")
+            cache_type = "with semantic grid" if semantic_grid else "without semantic grid"
+            logger.info(f"Loaded graph {cache_key} from disk cache {cache_type}")
             return graph
 
         except Exception as e:
@@ -193,16 +252,26 @@ class PersistentGraphCache:
             return None
 
     def _save_graph_to_disk(
-        self, graph: nx.MultiGraph, cache_key: str, center: tuple[float, float], radius: float
+        self, graph: nx.MultiGraph, cache_key: str, center: tuple[float, float], radius: float, semantic_grid: SemanticGrid = None
     ):
-        """Save a graph to disk."""
+        """Save a graph and semantic grid to disk."""
         try:
             graph_file = self.cache_dir / f"{cache_key}.graph"
+            semantic_file = self.cache_dir / f"{cache_key}.semantic"
 
+            # Save graph
             with open(graph_file, "wb") as f:
                 pickle.dump(graph, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-            logger.info(f"Saved graph {cache_key} to disk ({self._get_file_size(cache_key)} bytes)")
+            # Save semantic grid if available
+            if semantic_grid:
+                semantic_grid.save_to_disk(str(semantic_file))
+
+            total_size = self._get_file_size(cache_key)
+            if semantic_grid:
+                total_size += semantic_file.stat().st_size if semantic_file.exists() else 0
+
+            logger.info(f"Saved graph {cache_key} to disk ({total_size} bytes)")
 
         except Exception as e:
             logger.error(f"Failed to save graph {cache_key}: {e}")
