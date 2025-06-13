@@ -280,7 +280,7 @@ class InteractiveMapEditor {
                 <div class="candidate-popup">
                     <h4>Candidate ${index + 1}</h4>
                     <p><strong>Distance:</strong> ${(candidate.distance / 1000).toFixed(1)}km</p>
-                    <p><strong>Score:</strong> ${(candidate.value_score * 100).toFixed(0)}%</p>
+                    <p><strong>Why this spot:</strong> ${candidate.explanation || 'Basic walkable area'}</p>
                     <div class="candidate-actions">
                         <button class="btn btn-primary btn-sm" onclick="window.interactiveMap.addWaypoint(${candidate.node_id})">
                             📍 Add Waypoint

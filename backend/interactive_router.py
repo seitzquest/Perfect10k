@@ -24,6 +24,7 @@ class RouteCandidate:
     value_score: float
     distance_from_current: float
     estimated_route_completion: float  # Estimated total route length if chosen as final
+    explanation: str = "Basic walkable area"  # Explanation for the score
 
 
 @dataclass
@@ -182,7 +183,7 @@ class InteractiveRouteBuilder:
                 continue
 
             # Calculate value score using semantic matcher
-            value_score = self._calculate_node_value_for_session(session, node)
+            value_score, explanation = self._calculate_node_value_for_session(session, node)
 
             # Estimate total route completion if this becomes final destination
             estimated_completion = route.total_distance + distance
@@ -198,7 +199,8 @@ class InteractiveRouteBuilder:
                 lon=node_lon,
                 value_score=value_score,
                 distance_from_current=distance,
-                estimated_route_completion=estimated_completion
+                estimated_route_completion=estimated_completion,
+                explanation=explanation  # Add explanation to candidate
             ))
 
         # Select diverse candidates by direction
@@ -222,19 +224,19 @@ class InteractiveRouteBuilder:
 
         return False
 
-    def _calculate_node_value_for_session(self, session: ClientSession, node: int) -> float:
-        """Calculate value score for a node using session's route preferences."""
+    def _calculate_node_value_for_session(self, session: ClientSession, node: int) -> tuple[float, str]:
+        """Calculate value score and explanation for a node using session's route preferences."""
         if not session.active_route:
-            return 0.5
+            return 0.5, "No active route"
 
         route = session.active_route
         try:
             if hasattr(session.semantic_matcher, 'calculate_node_value'):
-                return session.semantic_matcher.calculate_node_value(node, route.value_function)
+                return session.semantic_matcher.calculate_node_value(node, route.value_function, session.graph)
             else:
-                return 0.5  # Neutral value
+                return 0.5, "Basic walkable area"
         except Exception:
-            return 0.5
+            return 0.5, "Unable to analyze location"
 
     def start_route(self, client_id: str, lat: float, lon: float, preference: str, target_distance: int = 8000) -> dict:
         """
@@ -285,7 +287,8 @@ class InteractiveRouteBuilder:
                     "lon": c.lon,
                     "value_score": c.value_score,
                     "distance": c.distance_from_current,
-                    "estimated_completion": c.estimated_route_completion
+                    "estimated_completion": c.estimated_route_completion,
+                    "explanation": c.explanation
                 }
                 for c in candidates
             ],
@@ -355,7 +358,8 @@ class InteractiveRouteBuilder:
                     "lon": c.lon,
                     "value_score": c.value_score,
                     "distance": c.distance_from_current,
-                    "estimated_completion": c.estimated_route_completion
+                    "estimated_completion": c.estimated_route_completion,
+                    "explanation": c.explanation
                 }
                 for c in candidates
             ],
