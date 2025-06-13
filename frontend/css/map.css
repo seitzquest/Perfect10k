@@ -639,35 +639,36 @@
 }
 
 .candidate-marker-content {
-    background: #f97316;
+    background: #A4B465;
     color: white;
     border-radius: 50%;
-    width: 60px;
-    height: 60px;
+    width: 50px;
+    height: 50px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
-    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(164, 180, 101, 0.3);
+    border: 2px solid white;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .candidate-marker-content:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(249, 115, 22, 0.6);
+    transform: scale(1.05);
+    background: #626F47;
+    box-shadow: 0 4px 12px rgba(98, 111, 71, 0.4);
 }
 
 .candidate-number {
-    font-size: 1.2rem;
-    font-weight: bold;
+    font-size: 1rem;
+    font-weight: 600;
     line-height: 1;
 }
 
 .candidate-distance {
-    font-size: 0.7rem;
-    opacity: 0.9;
+    font-size: 0.65rem;
+    opacity: 0.85;
     line-height: 1;
 }
 
@@ -677,7 +678,7 @@
 }
 
 .start-marker-content {
-    background: #10b981;
+    background: #626F47;
     color: white;
     border-radius: 50%;
     width: 50px;
@@ -686,8 +687,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(98, 111, 71, 0.3);
+    border: 2px solid white;
 }
 
 .start-icon {

@@ -32,9 +32,11 @@ class InteractiveMapEditor {
             zoomControl: false
         });
         
-        // Add tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
+        // Add minimal CartoDB style tile layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
         }).addTo(this.map);
         
         // Add zoom controls in custom position
@@ -335,11 +337,11 @@ class InteractiveMapEditor {
                     <p><strong>Distance:</strong> ${(candidate.distance / 1000).toFixed(1)}km</p>
                     <p><strong>Why this spot:</strong> ${candidate.explanation || 'Basic walkable area'}</p>
                     <div class="candidate-actions">
-                        <button class="btn btn-primary btn-sm" onclick="window.interactiveMap.addWaypoint(${candidate.node_id})">
-                            📍 Add Waypoint
+                        <button class="btn btn-light-green btn-sm" onclick="window.interactiveMap.addWaypoint(${candidate.node_id})">
+                            Add Waypoint
                         </button>
-                        <button class="btn btn-success btn-sm" onclick="window.interactiveMap.finalizeRoute(${candidate.node_id})">
-                            🏁 Final Destination
+                        <button class="btn btn-primary btn-sm" onclick="window.interactiveMap.finalizeRoute(${candidate.node_id})">
+                            Final Destination
                         </button>
                     </div>
                 </div>
@@ -441,7 +443,7 @@ class InteractiveMapEditor {
                 className: 'start-marker',
                 html: `
                     <div class="start-marker-content">
-                        <div class="start-icon">🏠</div>
+                        <div class="start-icon">⌂</div>
                         <div class="start-label">Start</div>
                     </div>
                 `,
@@ -471,10 +473,10 @@ class InteractiveMapEditor {
             const coordinates = routePath.map(point => [point.lat, point.lon]);
             
             const routeLine = L.polyline(coordinates, {
-                color: '#10B981',
+                color: '#626F47',
                 weight: 4,
-                opacity: 0.8,
-                dashArray: '10, 5'
+                opacity: 0.7,
+                dashArray: '8, 4'
             }).addTo(this.map);
             
             this.routeLayers.push(routeLine);
@@ -499,9 +501,9 @@ class InteractiveMapEditor {
             const coordinates = routeData.coordinates.map(point => [point.lat, point.lon]);
             
             const routeLine = L.polyline(coordinates, {
-                color: '#3B82F6',
+                color: '#626F47',
                 weight: 5,
-                opacity: 0.9
+                opacity: 0.8
             }).addTo(this.map);
             
             this.routeLayers.push(routeLine);
