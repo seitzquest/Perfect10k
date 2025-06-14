@@ -116,3 +116,18 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Server specific files
+cloudflare.ini
+*.pem
+*.key
+*.crt
+*.csr
+
+# Backup files
+*.backup
+*.bak
+
+# Server logs
+/var/log/
+logs/
