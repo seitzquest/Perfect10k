@@ -39,10 +39,7 @@ class InteractiveMapEditor {
             maxZoom: 20
         }).addTo(this.map);
         
-        // Add zoom controls in custom position
-        L.control.zoom({
-            position: 'topright'
-        }).addTo(this.map);
+        // Zoom controls disabled - using custom controls instead
         
         // Set up event handlers
         this.setupEventHandlers();
