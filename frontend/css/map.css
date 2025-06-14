@@ -927,14 +927,19 @@
     opacity: 1;
     pointer-events: auto;
     transform: scale(1);
-    background: var(--success);
+    background: var(--primary);
     color: white;
-    border-color: var(--success);
+    border-color: var(--primary);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .app-state-completed #downloadToggleMobile:hover {
-    background: var(--success-dark);
-    border-color: var(--success-dark);
+    background: var(--primary-dark);
+    border-color: var(--primary-dark);
+    transform: translateY(-1px) scale(1);
 }
 
 .btn-icon {
@@ -951,6 +956,10 @@
     transition: var(--transition-fast);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-200);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Make current location button match the circular style */

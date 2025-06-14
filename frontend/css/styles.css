@@ -317,13 +317,13 @@ label {
 
 .btn-light-green {
     background: var(--primary-light);
-    color: var(--text-primary);
+    color: var(--text-inverse);
     border: 1px solid var(--primary-light);
 }
 
 .btn-light-green:hover:not(:disabled) {
     background: #8B9A56;
-    color: var(--text-primary);
+    color: var(--text-inverse);
     border-color: #8B9A56;
     transform: translateY(-1px);
 }
@@ -737,11 +737,11 @@ label {
     position: relative;
     width: 100%;
     height: 32px;
-    background: var(--gray-100);
+    background: rgba(164, 180, 101, 0.15);
     border: 2px solid var(--gray-300);
     border-radius: var(--radius);
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: none;
     max-width: 200px; /* Limit width for better proportions */
 }
 
@@ -791,18 +791,15 @@ label {
     left: 50%;
     transform: translate(-50%, -50%);
     font-size: 15px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
+    font-weight: 500;
+    letter-spacing: -0.1px;
     color: var(--gray-700);
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+    text-shadow: none;
     z-index: 2;
     pointer-events: none;
 }
 
-/* When battery has progress, make text white for better contrast */
-.distance-battery-fill:not([data-progress="0"]) ~ .distance-value {
-    color: var(--white);
-}
+/* Keep text dark for better readability */
 
 
 /* Battery terminal (small rectangle on the right side) */
@@ -914,24 +911,31 @@ label {
     height: 48px;
     border: none;
     border-radius: 50%;
-    background: var(--success);
+    background: var(--primary);
     color: var(--white);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all var(--transition);
-    box-shadow: var(--shadow-lg);
+    transition: var(--transition);
+    box-shadow: var(--shadow-sm);
     z-index: 1500; /* Between map controls and mobile overlay */
+    font-size: 14px;
+    font-weight: normal;
 }
 
-.fab-download:hover {
-    transform: scale(1.1);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+.fab-download:hover:not(:disabled) {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
 }
 
-.fab-download:active {
-    transform: scale(0.95);
+.fab-download:disabled {
+    background: var(--gray-300);
+    color: var(--gray-500);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 /* Settings Overlay */
