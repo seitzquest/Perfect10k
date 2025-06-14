@@ -79,6 +79,9 @@ class Perfect10kApp {
         // Set initial app state
         this.setAppState('initial');
         
+        // Initialize buttons as disabled since no location is set
+        this.updateStartButton('disabled');
+        
         // Try to get user location automatically
         this.checkAndRequestLocation();
         
@@ -390,6 +393,11 @@ class Perfect10kApp {
     async handleStartRestart() {
         const button = document.getElementById('startRoute');
         
+        // Don't process if button is disabled
+        if (button.disabled) {
+            return;
+        }
+        
         if (button.textContent.includes('Start')) {
             // Starting new route
             if (this.mapEditor.userLocation) {
@@ -408,6 +416,9 @@ class Perfect10kApp {
             // If we have a location, immediately show that we can start again
             if (this.mapEditor.userLocation) {
                 this.setAppState('initial');
+                this.updateStartButton('start');
+            } else {
+                this.updateStartButton('disabled');
             }
         }
     }
@@ -419,15 +430,34 @@ class Perfect10kApp {
         const button = document.getElementById('startRoute');
         const mobileButton = document.getElementById('startRouteMobile');
         
-        if (mode === 'start') {
+        if (mode === 'disabled') {
+            // Desktop button - disabled state
+            button.innerHTML = '📍 Select Location First';
+            button.className = 'btn btn-outline btn-large';
+            button.disabled = true;
+            
+            // Mobile button - disabled state
+            if (mobileButton) {
+                mobileButton.className = 'btn-start-mobile';
+                mobileButton.title = 'Select Location First';
+                mobileButton.disabled = true;
+                mobileButton.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5,3 19,12 5,21"></polygon>
+                    </svg>
+                `;
+            }
+        } else if (mode === 'start') {
             // Desktop button
             button.innerHTML = '📍 Start';
             button.className = 'btn btn-primary btn-large';
+            button.disabled = false;
             
             // Mobile button - right arrow icon
             if (mobileButton) {
                 mobileButton.className = 'btn-start-mobile';
                 mobileButton.title = 'Start Route';
+                mobileButton.disabled = false;
                 mobileButton.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5,3 19,12 5,21"></polygon>
@@ -438,11 +468,13 @@ class Perfect10kApp {
             // Desktop button
             button.innerHTML = '🔄 Restart';
             button.className = 'btn btn-outline btn-large';
+            button.disabled = false;
             
             // Mobile button - restart icon
             if (mobileButton) {
                 mobileButton.className = 'btn-start-mobile restart';
                 mobileButton.title = 'Restart Route';
+                mobileButton.disabled = false;
                 mobileButton.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M23 4v6h-6"></path>

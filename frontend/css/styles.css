@@ -896,11 +896,13 @@ label {
 }
 
 .btn-generate:disabled, .btn-start-mobile:disabled {
-    background: var(--gray-300);
-    color: var(--gray-500);
+    background: var(--gray-300) !important;
+    color: var(--gray-500) !important;
     cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
+    transform: none !important;
+    box-shadow: none !important;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: none;
 }
 
 .fab-download {
