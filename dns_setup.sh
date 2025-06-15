@@ -1,4 +1,4 @@
-CLOUDFLARE_API_TOKEN=_aKULfFbtmrKWuTpVdjO6aIIQKKpyK-SpwRmjqu3
+CLOUDFLARE_API_TOKEN=
 DNS_RECORD_NAME="seitzquest.com"
 
 # Get Zone ID for the domain
