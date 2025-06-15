@@ -60,47 +60,6 @@ class ProcessManager:
         print_colored("✅ All servers stopped", Colors.GREEN)
 
 
-def check_ssl_certificates():
-    """Check if SSL certificates exist, create them if not."""
-    cert_dir = Path("certs")
-    cert_file = cert_dir / "cert.pem"
-    key_file = cert_dir / "key.pem"
-
-    if cert_file.exists() and key_file.exists():
-        print_colored("✅ SSL certificates found", Colors.GREEN)
-        return True
-
-    print_colored("⚠️  SSL certificates not found, creating them...", Colors.YELLOW)
-
-    # Create certificates directory
-    cert_dir.mkdir(exist_ok=True)
-
-    # Generate self-signed certificate
-    openssl_cmd = [
-        "openssl",
-        "req",
-        "-x509",
-        "-newkey",
-        "rsa:4096",
-        "-keyout",
-        str(key_file),
-        "-out",
-        str(cert_file),
-        "-days",
-        "365",
-        "-nodes",
-        "-subj",
-        "/C=US/ST=CA/L=SF/O=Perfect10k/CN=localhost",
-    ]
-
-    try:
-        subprocess.run(openssl_cmd, check=True, capture_output=True)
-        print_colored("✅ SSL certificates created", Colors.GREEN)
-        return True
-    except subprocess.CalledProcessError as e:
-        print_colored(f"❌ Failed to create SSL certificates: {e}", Colors.RED)
-        print_colored("   Please install openssl or create certificates manually", Colors.YELLOW)
-        return False
 
 
 def start_backend():
@@ -115,8 +74,8 @@ def start_backend():
     # Change to backend directory
     os.chdir(backend_dir)
 
-    # Start backend with HTTPS
-    cmd = [sys.executable, "run_https.py"]
+    # Start backend with HTTP
+    cmd = [sys.executable, "server.py"]
 
     try:
         process = subprocess.Popen(
@@ -126,7 +85,7 @@ def start_backend():
             universal_newlines=True,
             bufsize=1,
         )
-        print_colored("✅ Backend server starting on https://localhost:8000", Colors.GREEN)
+        print_colored("✅ Backend server starting on http://localhost:8000", Colors.GREEN)
         return process
     except OSError as e:
         if "Address already in use" in str(e):
@@ -159,8 +118,8 @@ def start_frontend():
         print_colored("❌ Frontend directory not found", Colors.RED)
         return None
 
-    # Start frontend HTTPS server
-    cmd = [sys.executable, "https_server.py"]
+    # Start frontend HTTP server
+    cmd = [sys.executable, "server.py"]
 
     try:
         process = subprocess.Popen(
@@ -171,7 +130,7 @@ def start_frontend():
             universal_newlines=True,
             bufsize=1,
         )
-        print_colored("✅ Frontend server starting on https://localhost:3000", Colors.GREEN)
+        print_colored("✅ Frontend server starting on http://localhost:3000", Colors.GREEN)
         return process
     except Exception as e:
         print_colored(f"❌ Failed to start frontend: {e}", Colors.RED)
@@ -201,8 +160,7 @@ def wait_for_servers():
     try:
         import requests
 
-        requests.packages.urllib3.disable_warnings()
-        response = requests.get("https://localhost:8000/health", verify=False, timeout=5)
+        response = requests.get("http://localhost:8000/health", timeout=5)
         if response.status_code == 200:
             print_colored("✅ Backend is responding", Colors.GREEN)
         else:
@@ -212,7 +170,7 @@ def wait_for_servers():
 
     # Test frontend
     try:
-        response = requests.get("https://localhost:3000", verify=False, timeout=5)
+        response = requests.get("http://localhost:3000", timeout=5)
         if response.status_code == 200:
             print_colored("✅ Frontend is responding", Colors.GREEN)
         else:
@@ -227,11 +185,6 @@ def main():
     # Change to project root directory
     script_dir = Path(__file__).parent
     os.chdir(script_dir)
-
-    # Check SSL certificates
-    if not check_ssl_certificates():
-        print_colored("❌ SSL setup failed. Exiting.", Colors.RED)
-        return 1
 
     # Process manager for cleanup
     manager = ProcessManager()
@@ -276,10 +229,10 @@ def main():
 
         print()
         print_colored("🎉 Perfect10k is running!", Colors.GREEN)
-        print_colored("   API Docs: https://localhost:8000/docs", Colors.BLUE)
+        print_colored("   API Docs: http://localhost:8000/docs", Colors.BLUE)
         print()
-        print_colored("💡 Open https://localhost:8000 in your browser", Colors.YELLOW)
-        print_colored("   (Accept the self-signed certificate warning)", Colors.YELLOW)
+        print_colored("💡 Open http://localhost:3000 in your browser", Colors.YELLOW)
+        print_colored("   Backend API: http://localhost:8000", Colors.YELLOW)
         print()
         print_colored("Press Ctrl+C to stop all servers", Colors.BLUE)
 

@@ -7,8 +7,6 @@ set -e
 
 # Configuration - CHANGE THESE VALUES
 DOMAIN="seitzquest.com"
-CLOUDFLARE_API_TOKEN="your_cloudflare_api_token_here"
-EMAIL="your-email@example.com"
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,11 +38,7 @@ if [[ $EUID -eq 0 ]]; then
    exit 1
 fi
 
-# Check if configuration is set
-if [[ "$DOMAIN" == "seitzquest.com" || "$CLOUDFLARE_API_TOKEN" == "your_cloudflare_api_token_here" ]]; then
-    log_error "Please edit this script and set your DOMAIN and CLOUDFLARE_API_TOKEN"
-    exit 1
-fi
+# Domain is already set to seitzquest.com - no changes needed
 
 log_info "Starting Perfect10k server setup for domain: $DOMAIN"
 
@@ -54,8 +48,21 @@ sudo apt update && sudo apt upgrade -y
 
 # Step 2: Install required packages
 log_step "Installing required packages..."
-sudo apt install -y nginx git certbot python3-certbot-nginx python3-certbot-dns-cloudflare \
-    curl htop iotop fail2ban ufw python3-pip python3-venv
+sudo apt install -y nginx git curl htop iotop fail2ban ufw python3-pip python3-venv
+
+# Step 2b: Install geospatial system dependencies
+log_step "Installing geospatial system dependencies..."
+# Add newer repository for updated geospatial libraries
+sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:ubuntugis/ubuntugis-unstable -y
+sudo apt update
+
+# Install updated geospatial libraries
+sudo apt install -y libproj-dev proj-data proj-bin libgeos-dev libspatialindex-dev libffi-dev libgdal-dev gdal-bin
+
+# Step 3: Install uv globally
+log_step "Installing uv package manager..."
+curl -LsSf https://astral.sh/uv/install.sh | sudo sh
 
 # Step 3: Configure firewall
 log_step "Configuring firewall..."
@@ -80,21 +87,20 @@ sudo git clone https://github.com/yourusername/Perfect10k.git
 sudo chown -R www-data:www-data Perfect10k
 sudo chmod -R 755 Perfect10k
 
-# Step 6: Set up directory structure
+# Step 6: Set up directory structure and dependencies
 log_step "Setting up directory structure..."
 sudo mkdir -p /var/www/Perfect10k/logs
 sudo chown -R www-data:www-data /var/www/Perfect10k/logs
 
-# Step 7: Configure Cloudflare credentials
-log_step "Setting up Cloudflare credentials..."
-sudo mkdir -p /etc/letsencrypt
-echo "dns_cloudflare_api_token = $CLOUDFLARE_API_TOKEN" | sudo tee /etc/letsencrypt/cloudflare.ini
-sudo chmod 600 /etc/letsencrypt/cloudflare.ini
+log_step "Installing Python dependencies with uv..."
+cd /var/www/Perfect10k
+sudo chown -R $USER:$USER /var/www/Perfect10k
+uv sync
+sudo chown -R www-data:www-data /var/www/Perfect10k
 
-# Step 8: Configure Nginx
+# Step 7: Configure Nginx
 log_step "Configuring Nginx..."
-sudo cp /var/www/Perfect10k/config/nginx/perfect10k.conf /etc/nginx/sites-available/perfect10k
-sudo sed -i "s/seitzquest.com/$DOMAIN/g" /etc/nginx/sites-available/perfect10k
+sudo cp /var/www/Perfect10k/config/nginx/perfect10k-cloudflare.conf /etc/nginx/sites-available/perfect10k
 
 # Enable site and remove default
 sudo ln -sf /etc/nginx/sites-available/perfect10k /etc/nginx/sites-enabled/
@@ -103,25 +109,8 @@ sudo rm -f /etc/nginx/sites-enabled/default
 # Test Nginx configuration
 sudo nginx -t
 
-# Step 9: Start with HTTP-only configuration for certificate generation
-log_step "Starting with HTTP-only configuration..."
-sudo systemctl reload nginx
-
-# Step 10: Obtain SSL certificate
-log_step "Obtaining SSL certificate from Let's Encrypt..."
-sudo certbot certonly \
-  --dns-cloudflare \
-  --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
-  --dns-cloudflare-propagation-seconds 60 \
-  --email "$EMAIL" \
-  --agree-tos \
-  --non-interactive \
-  -d "$DOMAIN"
-
-# Step 11: Update Nginx configuration for HTTPS
-log_step "Enabling HTTPS configuration..."
-# The configuration is already set up for HTTPS, just reload
-sudo nginx -t
+# Step 8: Start Nginx
+log_step "Starting Nginx with Cloudflare configuration..."
 sudo systemctl reload nginx
 
 # Step 12: Set up log rotation
@@ -134,14 +123,6 @@ sudo cp /var/www/Perfect10k/config/fail2ban/perfect10k.conf /etc/fail2ban/jail.d
 sudo systemctl enable fail2ban
 sudo systemctl restart fail2ban
 
-# Step 14: Set up automatic certificate renewal
-log_step "Setting up automatic certificate renewal..."
-sudo cp /var/www/Perfect10k/scripts/ssl-renew.sh /usr/local/bin/
-sudo chmod +x /usr/local/bin/ssl-renew.sh
-sudo sed -i "s/seitzquest.com/$DOMAIN/g" /usr/local/bin/ssl-renew.sh
-
-# Add to crontab for automatic renewal
-(sudo crontab -l 2>/dev/null; echo "0 3 * * 0 /usr/local/bin/ssl-renew.sh") | sudo crontab -
 
 # Step 15: Test installation
 log_step "Testing installation..."
@@ -161,9 +142,8 @@ else
     log_warn "⚠ HTTPS connection test failed"
 fi
 
-# Check certificate
-CERT_EXPIRY=$(sudo openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" | cut -d= -f2)
-log_info "✓ SSL certificate expires: $CERT_EXPIRY"
+# SSL is handled by Cloudflare - no local certificates needed
+log_info "✓ SSL handled by Cloudflare proxy"
 
 # Final instructions
 log_info "🎉 Setup completed successfully!"
@@ -178,7 +158,6 @@ echo "3. Monitor logs: sudo tail -f /var/log/nginx/perfect10k_access.log"
 echo "4. Use the deploy script for future updates: /var/www/Perfect10k/scripts/deploy.sh"
 echo
 echo -e "${YELLOW}Useful commands:${NC}"
-echo "- Check SSL certificate: sudo certbot certificates"
-echo "- Renew SSL certificate: sudo /usr/local/bin/ssl-renew.sh"
+echo "- SSL is managed by Cloudflare - no local certificate management needed"
 echo "- Check fail2ban status: sudo fail2ban-client status"
 echo "- View Nginx logs: sudo tail -f /var/log/nginx/perfect10k_error.log"

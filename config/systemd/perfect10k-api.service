@@ -10,20 +10,10 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/var/www/Perfect10k
-Environment=PATH=/var/www/Perfect10k/venv/bin
-Environment=PYTHONPATH=/var/www/Perfect10k
-Environment=FLASK_ENV=production
-Environment=FLASK_APP=api/app.py
+Environment=PATH=/var/www/Perfect10k/.venv/bin:/usr/local/bin:/usr/bin:/bin
 
-# Adjust the command based on your backend framework
-# For Flask:
-ExecStart=/var/www/Perfect10k/venv/bin/python -m flask run --host=127.0.0.1 --port=8000
-
-# For FastAPI with uvicorn:
-# ExecStart=/var/www/Perfect10k/venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 2
-
-# For Django:
-# ExecStart=/var/www/Perfect10k/venv/bin/python manage.py runserver 127.0.0.1:8000
+# Run FastAPI backend with uv (HTTP only - Nginx handles SSL)
+ExecStart=/usr/local/bin/uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 2
 
 # Restart policy
 Restart=on-failure
@@ -36,7 +26,8 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/www/Perfect10k/logs
+ReadWritePaths=/var/www/Perfect10k/backend/cache
+ReadWritePaths=/var/www/Perfect10k/cache
 ReadWritePaths=/tmp
 
 # Resource limits
