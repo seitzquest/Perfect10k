@@ -2,7 +2,6 @@ CLOUDFLARE_API_TOKEN=
 DNS_RECORD_NAME="seitzquest.com"
 
 # Get Zone ID for the domain
-# CLOUDFLARE_API_TOKEN='xKh_EUtJ7r1cvifZVf12Xso3r4B_yg6qlxcAp_yO'
 # curl -X GET "https://api.cloudflare.com/client/v4/zones?name=seitzquest.com" \
 #      -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
 ZONE_ID='de98dfce25ee54c9702e0696f8e9ea04'
