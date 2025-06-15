@@ -108,6 +108,35 @@
 
                 </div>
 
+                <!-- Semantic Overlays Panel -->
+                <div class="panel">
+                    <h3>🗺️ Map Overlays</h3>
+                    
+                    <div class="overlay-controls">
+                        <div class="overlay-toggle-group">
+                            <button type="button" id="overlay-toggle-forests" class="overlay-toggle-btn" title="Toggle forests and parks">
+                                <span class="overlay-icon">🌲</span>
+                                <span class="overlay-label">Forests</span>
+                            </button>
+                            
+                            <button type="button" id="overlay-toggle-rivers" class="overlay-toggle-btn" title="Toggle rivers and streams">
+                                <span class="overlay-icon">🌊</span>
+                                <span class="overlay-label">Rivers</span>
+                            </button>
+                            
+                            <button type="button" id="overlay-toggle-lakes" class="overlay-toggle-btn" title="Toggle lakes and water bodies">
+                                <span class="overlay-icon">🏞️</span>
+                                <span class="overlay-label">Lakes</span>
+                            </button>
+                        </div>
+                        
+                        <div class="overlay-info">
+                            <p class="overlay-description">Toggle natural features to help plan scenic routes through parks, along waterways, and around lakes.</p>
+                        </div>
+                    </div>
+
+                </div>
+
                 <!-- Route Stats -->
                 <div class="panel" id="routeStats" style="display: none;">
                     <h3>📊 Route Statistics</h3>
@@ -311,6 +340,38 @@
                                 <input type="checkbox" id="feelingLuckyMobile" class="checkbox-inline">
                             </label>
                         </div>
+
+                        <!-- Map Overlays -->
+                        <div class="form-group">
+                            <label>Map Overlays</label>
+                            <div class="overlay-controls-mobile">
+                                <div class="overlay-toggle-group-mobile">
+                                    <label class="overlay-checkbox-label">
+                                        <input type="checkbox" id="overlay-checkbox-forests" class="overlay-checkbox">
+                                        <span class="overlay-checkbox-content">
+                                            <span class="overlay-icon">🌲</span>
+                                            <span class="overlay-label">Forests</span>
+                                        </span>
+                                    </label>
+                                    
+                                    <label class="overlay-checkbox-label">
+                                        <input type="checkbox" id="overlay-checkbox-rivers" class="overlay-checkbox">
+                                        <span class="overlay-checkbox-content">
+                                            <span class="overlay-icon">🌊</span>
+                                            <span class="overlay-label">Rivers</span>
+                                        </span>
+                                    </label>
+                                    
+                                    <label class="overlay-checkbox-label">
+                                        <input type="checkbox" id="overlay-checkbox-lakes" class="overlay-checkbox">
+                                        <span class="overlay-checkbox-content">
+                                            <span class="overlay-icon">🏞️</span>
+                                            <span class="overlay-label">Lakes</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -331,8 +392,8 @@
 
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="/static/js/debug.js"></script>
     <script src="/static/js/api.js"></script>
+    <script src="/static/js/semantic_overlays.js"></script>
     <script src="/static/js/interactive_map.js"></script>
     <script src="/static/js/app.js"></script>
 </body>

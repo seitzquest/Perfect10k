@@ -772,6 +772,179 @@
     color: var(--warning);
 }
 
+/* Semantic Overlay Controls */
+.overlay-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.overlay-toggle-group {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.overlay-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    background: white;
+    color: var(--gray-700);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-size: 0.875rem;
+}
+
+.overlay-toggle-btn:hover {
+    background: var(--gray-50);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.overlay-toggle-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.overlay-toggle-btn.loading {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.overlay-toggle-btn.loading::after {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.overlay-icon {
+    font-size: 1rem;
+    width: 20px;
+    text-align: center;
+}
+
+.overlay-label {
+    font-weight: 500;
+    flex: 1;
+}
+
+.overlay-description {
+    font-size: 0.8rem;
+    color: var(--gray-600);
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* Mobile Overlay Controls */
+.overlay-controls-mobile {
+    margin-top: var(--space-2);
+}
+
+.overlay-toggle-group-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.overlay-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    background: white;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.overlay-checkbox-label:hover {
+    background: var(--gray-50);
+    border-color: var(--primary);
+}
+
+.overlay-checkbox {
+    margin: 0;
+    accent-color: var(--primary);
+}
+
+.overlay-checkbox-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+}
+
+.overlay-checkbox-content .overlay-icon {
+    font-size: 1rem;
+    width: 20px;
+    text-align: center;
+}
+
+.overlay-checkbox-content .overlay-label {
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: var(--gray-700);
+}
+
+/* Overlay popup styles */
+.overlay-popup {
+    min-width: 200px;
+    max-width: 300px;
+}
+
+.overlay-popup h4 {
+    margin: 0 0 var(--space-2) 0;
+    font-size: 1rem;
+    color: var(--gray-800);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.overlay-popup p {
+    margin: var(--space-1) 0;
+    font-size: 0.875rem;
+    color: var(--gray-600);
+}
+
+.overlay-popup strong {
+    color: var(--gray-700);
+}
+
+/* Semantic overlay layer styles */
+.semantic-overlay-forests {
+    cursor: pointer;
+}
+
+.semantic-overlay-rivers {
+    cursor: pointer;
+}
+
+.semantic-overlay-lakes {
+    cursor: pointer;
+}
+
+/* Loading state for overlay toggles */
+.overlay-toggle-btn[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* Mobile Controls */
 .mobile-overlay {
     position: absolute;

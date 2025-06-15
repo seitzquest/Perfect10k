@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from interactive_router import InteractiveRouteBuilder
 from loguru import logger
 from pydantic import BaseModel
+from semantic_overlays import SemanticOverlayManager, BoundingBox
 
 # Configure logging
 logger.remove()  # Remove default handler
@@ -49,6 +50,9 @@ app.mount("/static", StaticFiles(directory="../frontend"), name="static")
 # Global route builder instance
 route_builder = InteractiveRouteBuilder()
 
+# Global semantic overlay manager instance
+overlay_manager = SemanticOverlayManager()
+
 
 # Request/Response Models
 class StartRouteRequest(BaseModel):
@@ -67,6 +71,14 @@ class AddWaypointRequest(BaseModel):
 class FinalizeRouteRequest(BaseModel):
     session_id: str
     final_node_id: int
+
+
+class SemanticOverlayRequest(BaseModel):
+    lat: float
+    lon: float
+    radius_km: float = 2.0
+    feature_types: list[str] = ["forests", "rivers", "lakes"]
+    use_cache: bool = True
 
 
 # Utility function to generate client ID
@@ -329,6 +341,135 @@ async def cleanup_old_sessions(max_age_hours: float = 24.0):
         raise HTTPException(status_code=500, detail=f"Failed to cleanup sessions: {str(e)}") from e
 
 
+@app.post("/api/semantic-overlays")
+async def get_semantic_overlays(request: SemanticOverlayRequest):
+    """Get semantic overlay data for specified area and feature types."""
+    try:
+        # Calculate bounding box from center point and radius
+        bbox = overlay_manager.calculate_bbox_from_center(
+            request.lat, request.lon, request.radius_km
+        )
+        
+        logger.info(f"Getting semantic overlays for {request.feature_types} around ({request.lat:.6f}, {request.lon:.6f}) with radius {request.radius_km}km")
+        
+        # Get overlays for requested feature types
+        overlays = {}
+        for feature_type in request.feature_types:
+            if feature_type in overlay_manager.feature_configs:
+                overlays[feature_type] = overlay_manager.get_semantic_overlays(
+                    feature_type, bbox, request.use_cache
+                )
+            else:
+                logger.warning(f"Unknown feature type requested: {feature_type}")
+        
+        return {
+            "success": True,
+            "bbox": {
+                "south": bbox.south,
+                "west": bbox.west, 
+                "north": bbox.north,
+                "east": bbox.east
+            },
+            "overlays": overlays,
+            "metadata": {
+                "center": {"lat": request.lat, "lon": request.lon},
+                "radius_km": request.radius_km,
+                "requested_features": request.feature_types,
+                "returned_features": list(overlays.keys())
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to get semantic overlays: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get semantic overlays: {str(e)}") from e
+
+
+@app.get("/api/semantic-overlays/{feature_type}")
+async def get_single_semantic_overlay(
+    feature_type: str,
+    lat: float,
+    lon: float,
+    radius_km: float = 2.0,
+    use_cache: bool = True
+):
+    """Get semantic overlay data for a single feature type."""
+    try:
+        # Calculate bounding box from center point and radius
+        bbox = overlay_manager.calculate_bbox_from_center(lat, lon, radius_km)
+        
+        logger.info(f"Getting {feature_type} overlay around ({lat:.6f}, {lon:.6f}) with radius {radius_km}km")
+        
+        if feature_type not in overlay_manager.feature_configs:
+            raise HTTPException(status_code=400, detail=f"Unknown feature type: {feature_type}")
+        
+        overlay_data = overlay_manager.get_semantic_overlays(feature_type, bbox, use_cache)
+        
+        return {
+            "success": True,
+            "feature_type": feature_type,
+            "bbox": {
+                "south": bbox.south,
+                "west": bbox.west,
+                "north": bbox.north, 
+                "east": bbox.east
+            },
+            "data": overlay_data,
+            "metadata": {
+                "center": {"lat": lat, "lon": lon},
+                "radius_km": radius_km
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get {feature_type} overlay: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get {feature_type} overlay: {str(e)}") from e
+
+
+@app.get("/api/semantic-overlays-info")
+async def get_semantic_overlays_info():
+    """Get information about available semantic overlay types."""
+    feature_info = {}
+    
+    for feature_type, config in overlay_manager.feature_configs.items():
+        feature_info[feature_type] = {
+            "style": config["style"],
+            "description": f"OSM {feature_type} features"
+        }
+    
+    cache_stats = overlay_manager.get_cache_stats()
+    
+    return {
+        "available_features": feature_info,
+        "cache_stats": cache_stats,
+        "api_info": {
+            "endpoints": [
+                "POST /api/semantic-overlays - Get multiple overlay types",
+                "GET /api/semantic-overlays/{feature_type} - Get single overlay type",
+                "GET /api/semantic-overlays-info - Get this info"
+            ],
+            "supported_features": list(overlay_manager.feature_configs.keys())
+        }
+    }
+
+
+@app.post("/api/semantic-overlays/clear-cache")
+async def clear_semantic_overlay_cache(older_than_hours: int = None):
+    """Clear semantic overlay cache."""
+    try:
+        cleared_count = overlay_manager.clear_cache(older_than_hours)
+        return {
+            "success": True,
+            "cleared_files": cleared_count,
+            "message": f"Cleared {cleared_count} cache files" + 
+                      (f" older than {older_than_hours} hours" if older_than_hours else "")
+        }
+    except Exception as e:
+        logger.error(f"Failed to clear semantic overlay cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}") from e
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -342,11 +483,12 @@ async def health_check():
             "Interactive route building",
             "Real-time candidate generation",
             "Conflict avoidance",
-            "Distance-based heuristics",
+            "Distance-based heuristics", 
             "Semantic preference matching",
             "Disjunct path planning",
             "Route completion estimation",
-            "Persistent graph caching"
+            "Persistent graph caching",
+            "Semantic overlays (forests, rivers, lakes)"
         ],
         "workflow": [
             "Start session with location and preferences",
@@ -360,7 +502,8 @@ async def health_check():
             "legacy_cache_graphs": len(route_builder.graph_cache),
             "persistent_cache_graphs": cache_stats["persistent_cache"]["total_graphs"],
             "memory_cached_graphs": cache_stats["memory_cache"]["memory_cached_graphs"],
-            "cache_size_mb": cache_stats["persistent_cache"]["total_size_mb"]
+            "cache_size_mb": cache_stats["persistent_cache"]["total_size_mb"],
+            "semantic_overlay_cache": overlay_manager.get_cache_stats()
         }
     }
 

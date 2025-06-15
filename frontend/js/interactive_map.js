@@ -17,6 +17,7 @@ class InteractiveMapEditor {
         this.routeLayers = [];
         this.userSetZoom = false;
         this.feelingLuckyMode = false;
+        this.semanticOverlays = null;
         
         this.initialize();
     }
@@ -51,6 +52,9 @@ class InteractiveMapEditor {
         
         // Set up feeling lucky mode listeners
         this.setupFeelingLuckyMode();
+        
+        // Initialize semantic overlays
+        this.initializeSemanticOverlays();
         
         console.log('Interactive map editor initialized');
     }
@@ -89,6 +93,50 @@ class InteractiveMapEditor {
                 
                 console.log('Feeling lucky mode:', this.feelingLuckyMode);
             });
+        }
+    }
+    
+    /**
+     * Initialize semantic overlays system
+     */
+    initializeSemanticOverlays() {
+        try {
+            // Initialize the semantic overlays manager
+            this.semanticOverlays = new SemanticOverlaysManager(this.map, window.apiClient);
+            
+            // Set up desktop toggle buttons
+            const overlayTypes = ['forests', 'rivers', 'lakes'];
+            overlayTypes.forEach(overlayType => {
+                const toggleBtn = document.getElementById(`overlay-toggle-${overlayType}`);
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', () => {
+                        this.semanticOverlays.toggleOverlay(overlayType);
+                    });
+                }
+                
+                // Set up mobile checkboxes
+                const checkbox = document.getElementById(`overlay-checkbox-${overlayType}`);
+                if (checkbox) {
+                    checkbox.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            this.semanticOverlays.showOverlay(overlayType);
+                        } else {
+                            this.semanticOverlays.hideOverlay(overlayType);
+                        }
+                        
+                        // Sync desktop button state
+                        const desktopBtn = document.getElementById(`overlay-toggle-${overlayType}`);
+                        if (desktopBtn) {
+                            desktopBtn.classList.toggle('active', e.target.checked);
+                        }
+                    });
+                }
+            });
+            
+            console.log('Semantic overlays initialized');
+            
+        } catch (error) {
+            console.error('Failed to initialize semantic overlays:', error);
         }
     }
     
@@ -782,7 +830,8 @@ class InteractiveMapEditor {
             hasRoute: !!this.currentRoute,
             routeBuilding: this.routeBuilding,
             candidatesCount: this.candidates.length,
-            waypointsCount: this.waypoints.length
+            waypointsCount: this.waypoints.length,
+            semanticOverlays: this.semanticOverlays ? this.semanticOverlays.getOverlayStats() : null
         };
     }
     

@@ -315,6 +315,89 @@ class ApiClient {
     }
     
     /**
+     * Get semantic overlays for specified area and feature types
+     */
+    async getSemanticOverlays(lat, lon, radiusKm = 2.0, featureTypes = ["forests", "rivers", "lakes"], useCache = true) {
+        const requestData = {
+            lat: lat,
+            lon: lon,
+            radius_km: radiusKm,
+            feature_types: featureTypes,
+            use_cache: useCache
+        };
+        
+        try {
+            const response = await this.makeRequest('/api/semantic-overlays', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Get semantic overlays failed:', error);
+            throw new Error(`Get semantic overlays failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Get single semantic overlay for a specific feature type
+     */
+    async getSingleSemanticOverlay(featureType, lat, lon, radiusKm = 2.0, useCache = true) {
+        try {
+            const response = await this.makeRequest(
+                `/api/semantic-overlays/${featureType}?lat=${lat}&lon=${lon}&radius_km=${radiusKm}&use_cache=${useCache}`
+            );
+            
+            return response;
+            
+        } catch (error) {
+            console.error(`Get ${featureType} overlay failed:`, error);
+            throw new Error(`Get ${featureType} overlay failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Get information about available semantic overlay types
+     */
+    async getSemanticOverlaysInfo() {
+        try {
+            const response = await this.makeRequest('/api/semantic-overlays-info');
+            return response;
+            
+        } catch (error) {
+            console.error('Get semantic overlays info failed:', error);
+            throw new Error(`Get semantic overlays info failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Clear semantic overlay cache
+     */
+    async clearSemanticOverlayCache(olderThanHours = null) {
+        const requestData = olderThanHours ? { older_than_hours: olderThanHours } : {};
+        
+        try {
+            const response = await this.makeRequest('/api/semantic-overlays/clear-cache', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Clear semantic overlay cache failed:', error);
+            throw new Error(`Clear semantic overlay cache failed: ${error.message}`);
+        }
+    }
+    
+    /**
      * Core request method with retry logic and error handling
      */
     async makeRequest(endpoint, options = {}) {
