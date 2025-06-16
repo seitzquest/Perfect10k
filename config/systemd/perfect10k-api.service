@@ -9,11 +9,15 @@ StartLimitBurst=5
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/var/www/Perfect10k
-Environment=PATH=/var/www/Perfect10k/.venv/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/var/www/Perfect10k/backend
 
-# Run FastAPI backend with uv (HTTP only - Nginx handles SSL)
-ExecStart=/usr/local/bin/uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 2
+# Set up the environment with the virtual environment activated
+Environment=PATH=/var/www/Perfect10k/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=VIRTUAL_ENV=/var/www/Perfect10k/.venv
+Environment=PYTHONPATH=/var/www/Perfect10k
+
+# Use the Python from the virtual environment directly instead of uv
+ExecStart=/var/www/Perfect10k/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2
 
 # Restart policy
 Restart=on-failure
