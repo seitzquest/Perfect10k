@@ -947,6 +947,7 @@
     cursor: pointer;
     transition: var(--transition-fast);
     font-size: 0.875rem;
+    position: relative;
 }
 
 .overlay-toggle-btn:hover {
@@ -956,9 +957,18 @@
 }
 
 .overlay-toggle-btn.active {
-    background: var(--primary);
+    background: white;
     border-color: var(--primary);
-    color: white;
+    color: var(--gray-700);
+}
+
+.overlay-toggle-btn.active::before {
+    content: '✓';
+    position: absolute;
+    right: 12px;
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 14px;
 }
 
 .overlay-toggle-btn.loading {
