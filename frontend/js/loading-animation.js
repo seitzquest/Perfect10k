@@ -20,15 +20,15 @@ class LoadingAnimationManager {
             <div class="loading-content">
                 <div class="loading-header">
                     <div class="loading-spinner">
-                        <div class="spinner-ring"></div>
-                        <div class="spinner-ring"></div>
-                        <div class="spinner-ring"></div>
+                        <div class="flowing-dot"></div>
+                        <div class="flowing-dot"></div>
+                        <div class="flowing-dot"></div>
+                        <div class="flowing-dot"></div>
                     </div>
                     <div class="loading-text">
                         <h4 id="loading-title">Initializing Route Planning</h4>
                         <p id="loading-description">Preparing your personalized route...</p>
                     </div>
-                    <button id="loading-close" class="loading-close" title="Continue in background">×</button>
                 </div>
                 <div class="loading-progress">
                     <div class="progress-bar">
@@ -81,10 +81,10 @@ class LoadingAnimationManager {
             
             .loading-content {
                 background: white;
-                padding: 12px 16px;
-                border-radius: 12px;
-                box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-                border: 1px solid rgba(0,0,0,0.1);
+                padding: 14px 16px;
+                border-radius: 10px;
+                box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+                border: 1px solid rgba(0,0,0,0.08);
                 backdrop-filter: blur(10px);
             }
             
@@ -95,67 +95,49 @@ class LoadingAnimationManager {
                 margin-bottom: 6px;
             }
             
-            .loading-close {
-                background: none;
-                border: none;
-                font-size: 20px;
-                color: #999;
-                cursor: pointer;
-                padding: 5px;
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin-left: auto;
-                transition: all 0.2s ease;
-            }
-            
-            .loading-close:hover {
-                background: #f0f0f0;
-                color: #666;
-            }
             
             .loading-spinner {
                 position: relative;
-                width: 28px;
-                height: 28px;
+                width: 52px;
+                height: 18px;
                 flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 6px;
             }
             
-            .spinner-ring {
-                position: absolute;
-                width: 100%;
-                height: 100%;
-                border: 4px solid transparent;
-                border-top: 4px solid #2196F3;
+            .flowing-dot {
+                width: 6px;
+                height: 6px;
                 border-radius: 50%;
-                animation: spin 1.5s linear infinite;
+                background: var(--primary, #626F47);
+                animation: simple-blink 1.5s ease-in-out infinite;
             }
             
-            .spinner-ring:nth-child(2) {
-                width: 24px;
-                height: 24px;
-                top: 4px;
-                left: 4px;
-                border-top-color: #4CAF50;
-                animation-duration: 2s;
-                animation-direction: reverse;
+            .flowing-dot:nth-child(1) {
+                animation-delay: 0s;
             }
             
-            .spinner-ring:nth-child(3) {
-                width: 16px;
-                height: 16px;
-                top: 8px;
-                left: 8px;
-                border-top-color: #FF9800;
-                animation-duration: 1s;
+            .flowing-dot:nth-child(2) {
+                animation-delay: 0.25s;
             }
             
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
+            .flowing-dot:nth-child(3) {
+                animation-delay: 0.5s;
+            }
+            
+            .flowing-dot:nth-child(4) {
+                animation-delay: 0.75s;
+            }
+            
+            @keyframes simple-blink {
+                0%, 80%, 100% { 
+                    opacity: 0.3;
+                }
+                40% { 
+                    opacity: 1.0;
+                }
             }
             
             .loading-text {
@@ -279,13 +261,6 @@ class LoadingAnimationManager {
         // Show overlay
         this.loadingContainer.classList.remove('hidden');
         
-        // Add close button functionality
-        const closeButton = document.getElementById('loading-close');
-        if (closeButton) {
-            closeButton.onclick = () => {
-                this.minimizeToBackground();
-            };
-        }
         
         // Start progress animation
         this.animateProgress(0);
@@ -313,87 +288,9 @@ class LoadingAnimationManager {
         if (detailsSection) detailsSection.style.display = '';
     }
 
-    minimizeToBackground() {
-        // Hide the loading overlay but don't cancel the request
-        this.loadingContainer.classList.add('hidden');
-        
-        // Show a small notification that work continues in background
-        this.showBackgroundNotification();
-    }
-
-    showBackgroundNotification() {
-        // Create or update a small background notification
-        let notification = document.getElementById('background-notification');
-        if (!notification) {
-            notification = document.createElement('div');
-            notification.id = 'background-notification';
-            notification.innerHTML = `
-                <div class="bg-notification-content">
-                    <div class="bg-spinner"></div>
-                    <span>Processing route...</span>
-                    <button onclick="window.loadingManager.showLoadingFromBackground()" title="Show details">↗</button>
-                </div>
-            `;
-            
-            // Add styles for background notification
-            const style = document.createElement('style');
-            style.textContent = `
-                #background-notification {
-                    position: fixed;
-                    bottom: 20px;
-                    right: 20px;
-                    background: rgba(0,0,0,0.8);
-                    color: white;
-                    padding: 12px 16px;
-                    border-radius: 8px;
-                    font-size: 0.85em;
-                    z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                }
-                .bg-notification-content {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                }
-                .bg-spinner {
-                    width: 16px;
-                    height: 16px;
-                    border: 2px solid rgba(255,255,255,0.3);
-                    border-top: 2px solid white;
-                    border-radius: 50%;
-                    animation: spin 1s linear infinite;
-                }
-                #background-notification button {
-                    background: none;
-                    border: none;
-                    color: white;
-                    cursor: pointer;
-                    padding: 4px;
-                    border-radius: 4px;
-                }
-                #background-notification button:hover {
-                    background: rgba(255,255,255,0.2);
-                }
-            `;
-            document.head.appendChild(style);
-            document.body.appendChild(notification);
-        }
-    }
-
-    showLoadingFromBackground() {
-        // Remove background notification and show main loading again
-        const notification = document.getElementById('background-notification');
-        if (notification) {
-            notification.remove();
-        }
-        this.loadingContainer.classList.remove('hidden');
-    }
-
     removeBackgroundNotification() {
-        const notification = document.getElementById('background-notification');
-        if (notification) {
-            notification.remove();
-        }
+        // Stub method for API compatibility - no background notifications in current design
+        // This prevents errors when API client tries to call this method
     }
 
     updateProgress(phases = [], totalDuration = 0) {
@@ -509,13 +406,6 @@ class LoadingAnimationManager {
         if (titleEl) titleEl.textContent = "Processing Route";
         if (descriptionEl) descriptionEl.textContent = "Loading street network";
         
-        // Add close button functionality
-        const closeButton = document.getElementById('loading-close');
-        if (closeButton) {
-            closeButton.onclick = () => {
-                this.minimizeToBackground();
-            };
-        }
     }
 
     resetPhases() {
@@ -579,13 +469,11 @@ class LoadingAnimationManager {
                 setTimeout(() => {
                     if (showLoading) {
                         this.hideLoading();
-                        this.removeBackgroundNotification();
                     }
                 }, 1000);
             } else {
                 if (showLoading) {
                     this.hideLoading();
-                    this.removeBackgroundNotification();
                 }
             }
 

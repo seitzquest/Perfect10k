@@ -506,19 +506,40 @@ label {
     flex: 1;
 }
 
-/* Loading Spinner */
+/* Loading Spinner - Simple Blinking Dots */
 .loading-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid var(--gray-200);
-    border-top: 2px solid var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 32px;
+    height: 16px;
 }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+.loading-spinner::before,
+.loading-spinner::after {
+    content: '';
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--primary);
+    animation: simple-blink 1.5s ease-in-out infinite;
+}
+
+.loading-spinner::before {
+    animation-delay: 0s;
+}
+
+.loading-spinner::after {
+    animation-delay: 0.5s;
+}
+
+@keyframes simple-blink {
+    0%, 80%, 100% { 
+        opacity: 0.3;
+    }
+    40% { 
+        opacity: 1.0;
+    }
 }
 
 /* Utility Classes */
