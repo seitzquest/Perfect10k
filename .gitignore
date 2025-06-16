@@ -131,3 +131,10 @@ cloudflare.ini
 # Server logs
 /var/log/
 logs/
+
+# Spatial tile storage files
+*.pkl
+*.pickle
+*.db
+tiles/
+spatial_tiles/

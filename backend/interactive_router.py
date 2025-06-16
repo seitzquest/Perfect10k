@@ -8,11 +8,17 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-import networkx as nx
-import osmnx as ox
-from core.graph_cache import PersistentGraphCache
-from core.semantic_matcher import SemanticMatcher
 from loguru import logger
+
+# Lazy imports for heavy dependencies to improve startup performance
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import networkx as nx
+    import osmnx as ox
+    from core.graph_cache import PersistentGraphCache
+    from core.semantic_matcher import SemanticMatcher
+    from semantic_overlays import SemanticOverlayManager
+    from semantic_candidate_generator import SemanticCandidateGenerator
 
 
 @dataclass
@@ -25,21 +31,26 @@ class RouteCandidate:
     distance_from_current: float
     estimated_route_completion: float  # Estimated total route length if chosen as final
     explanation: str = "Basic walkable area"  # Explanation for the score
+    semantic_scores: dict = None  # Individual scores per semantic property
+    semantic_details: str = ""  # Detailed semantic explanation
 
 
 @dataclass
 class ClientSession:
     """State of a client session with cached graph and routing capability."""
     client_id: str
-    graph: nx.MultiGraph
+    graph: 'nx.MultiGraph'
     graph_center: tuple[float, float]  # (lat, lon) center of cached graph
     graph_radius: float  # radius in meters
-    semantic_matcher: SemanticMatcher
+    semantic_matcher: 'SemanticMatcher'
 
     # Current route state (None if no active route)
     active_route: Optional['RouteState'] = None
     created_at: float = 0
     last_access: float = 0
+    
+    # Semantic scoring cache
+    semantic_cache_key: str = None
 
 @dataclass
 class RouteState:
@@ -61,13 +72,63 @@ class InteractiveRouteBuilder:
 
     def __init__(self, cache_dir: str = "cache/graphs"):
         self.client_sessions: dict[str, ClientSession] = {}
-        self.graph_cache: dict[str, nx.MultiGraph] = {}  # Legacy in-memory cache
-        self.persistent_cache = PersistentGraphCache(cache_dir)
-        self.semantic_matcher = SemanticMatcher()
+        self.graph_cache: dict[str, 'nx.MultiGraph'] = {}  # Legacy in-memory cache
+        self.cache_dir = cache_dir
+        
+        # Lazy initialization for faster startup performance
+        self._persistent_cache = None
+        self._semantic_matcher = None
+        self._semantic_overlay_manager = None
+        self._semantic_candidate_generator = None
 
-        logger.info("Initialized InteractiveRouteBuilder with persistent graph cache")
+        logger.info("Initialized InteractiveRouteBuilder (lazy mode for faster startup)")
 
-    def get_or_create_client_session(self, client_id: str, lat: float, lon: float) -> ClientSession:
+    @property
+    def persistent_cache(self):
+        """Get enhanced spatial cache instance (lazy initialization)."""
+        if self._persistent_cache is None:
+            from core.enhanced_graph_cache import EnhancedGraphCache
+            self._persistent_cache = EnhancedGraphCache(self.cache_dir)
+        return self._persistent_cache
+
+    @property
+    def semantic_matcher(self):
+        """Get semantic matcher instance (lazy initialization)."""
+        if self._semantic_matcher is None:
+            from core.semantic_matcher import SemanticMatcher
+            self._semantic_matcher = SemanticMatcher()
+        return self._semantic_matcher
+
+    @property
+    def semantic_overlay_manager(self):
+        """Get semantic overlay manager instance (lazy initialization)."""
+        if self._semantic_overlay_manager is None:
+            from semantic_overlays import SemanticOverlayManager
+            self._semantic_overlay_manager = SemanticOverlayManager()
+        return self._semantic_overlay_manager
+
+    @property
+    def semantic_candidate_generator(self):
+        """Get semantic candidate generator instance (lazy initialization)."""
+        if self._semantic_candidate_generator is None:
+            from semantic_candidate_generator import SemanticCandidateGenerator
+            self._semantic_candidate_generator = SemanticCandidateGenerator(self.semantic_overlay_manager)
+        return self._semantic_candidate_generator
+    
+    @property
+    def fast_candidate_generator(self):
+        """Get fast candidate generator instance (lazy initialization)."""
+        if not hasattr(self, '_fast_candidate_generator') or self._fast_candidate_generator is None:
+            try:
+                from fast_candidate_generator import FastCandidateGenerator
+                self._fast_candidate_generator = FastCandidateGenerator(self.semantic_overlay_manager)
+                logger.info("Initialized fast candidate generator")
+            except ImportError as e:
+                logger.warning(f"Fast candidate generator not available: {e}")
+                self._fast_candidate_generator = None
+        return self._fast_candidate_generator
+
+    def get_or_create_client_session(self, client_id: str, lat: float, lon: float, radius: float = 8000) -> ClientSession:
         """Get existing client session or create new one with cached graph."""
 
         # Check if client already has a session
@@ -87,15 +148,14 @@ class InteractiveRouteBuilder:
         # Create new session with cached graph
         logger.info(f"Creating new session for client {client_id} at ({lat:.6f}, {lon:.6f})")
 
-        # Load or get cached graph
-        radius = 8000  # 8km radius for good coverage
+        # Load or get cached graph with specified radius
         graph = self._get_cached_graph(lat, lon, radius)
 
         session = ClientSession(
             client_id=client_id,
             graph=graph,
             graph_center=(lat, lon),
-            graph_radius=8000,  # 8km radius for good coverage
+            graph_radius=radius,
             semantic_matcher=self.semantic_matcher,
             created_at=time.time(),
             last_access=time.time()
@@ -109,7 +169,7 @@ class InteractiveRouteBuilder:
         distance = self._haversine_distance(lat, lon, center[0], center[1])
         return distance <= radius * 0.8  # Use 80% of radius for safety margin
 
-    def _get_cached_graph(self, lat: float, lon: float, radius: float = 8000) -> nx.MultiGraph:
+    def _get_cached_graph(self, lat: float, lon: float, radius: float = 8000) -> 'nx.MultiGraph':
         """Get graph from persistent cache or load new one with fallback caching."""
 
         # First, try to get from persistent cache
@@ -129,12 +189,16 @@ class InteractiveRouteBuilder:
         logger.info(f"Loading new graph from OSM for ({lat:.6f}, {lon:.6f})")
         graph = self._load_graph(lat, lon, radius)
 
-        # Store in persistent cache for future use with semantic grid
+        # Store in spatial tile cache for permanent future use
         try:
-            cache_key_persistent = self.persistent_cache.store_graph(graph, (lat, lon), radius, self.semantic_matcher)
-            logger.info(f"Stored graph in persistent cache: {cache_key_persistent}")
+            semantic_features = {'forests', 'rivers', 'lakes'}  # Available semantic features
+            success = self.persistent_cache.store_graph(graph, lat, lon, radius, semantic_features)
+            if success:
+                logger.info(f"Stored graph as spatial tiles for permanent caching")
+            else:
+                logger.warning(f"Failed to store graph in spatial tiles")
         except Exception as e:
-            logger.warning(f"Failed to store graph in persistent cache: {e}")
+            logger.warning(f"Failed to store graph in spatial tile cache: {e}")
 
         # Also store in legacy cache for immediate reuse
         if len(self.graph_cache) >= 5:  # Reduced from 10 since we have persistent cache
@@ -145,8 +209,172 @@ class InteractiveRouteBuilder:
         self.graph_cache[cache_key] = graph
         return graph
 
-    def _generate_candidates_for_session(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
-        """Generate candidates using existing session data."""
+    def _generate_candidates_for_session(self, session: ClientSession, from_node: int, use_fast_generator: bool = True) -> list[RouteCandidate]:
+        """Generate candidates using fast or regular semantic precomputation."""
+        if not session.active_route:
+            raise ValueError("No active route in session")
+
+        route = session.active_route
+
+        # Choose generation method based on availability and preference
+        if use_fast_generator and self.fast_candidate_generator is not None:
+            return self._generate_candidates_fast(session, from_node)
+        else:
+            return self._generate_candidates_regular(session, from_node)
+    
+    def _generate_candidates_fast(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
+        """Generate candidates using ultra-fast optimized generator."""
+        route = session.active_route
+        
+        # Ensure fast semantic scores are precomputed for this area
+        if not hasattr(session, 'fast_cache_key') or not session.fast_cache_key:
+            logger.info("Fast precomputing semantic scores for session area")
+            session.fast_cache_key = self.fast_candidate_generator.precompute_area_scores_fast(
+                session.graph, 
+                session.graph_center[0], 
+                session.graph_center[1],
+                session.graph_radius,
+                route.preference,
+                max_nodes=1000  # Limit nodes for speed
+            )
+
+        # Calculate target radius based on remaining distance
+        remaining_distance = route.target_distance - route.total_distance
+        slack_factor = 1.2
+        target_radius = slack_factor * remaining_distance / (2 * math.pi)
+        target_radius = max(200, min(target_radius, 2000))
+
+        from_lat = session.graph.nodes[from_node]["y"]
+        from_lon = session.graph.nodes[from_node]["x"]
+
+        logger.info(f"Ultra-fast candidate generation from node {from_node} with radius {target_radius:.0f}m")
+
+        # Get candidates using ultra-fast generator
+        exclude_nodes = set(route.current_waypoints)
+        
+        # Also exclude nodes too close to existing waypoints
+        for node, data in session.graph.nodes(data=True):
+            if self._too_close_to_existing_waypoints_in_session(session, node, min_distance=100):
+                exclude_nodes.add(node)
+
+        fast_candidates = self.fast_candidate_generator.generate_candidates_ultra_fast(
+            session.fast_cache_key,
+            from_lat,
+            from_lon, 
+            target_radius,
+            exclude_nodes,
+            min_score=0.15,  # Slightly lower threshold for more options
+            max_candidates=3
+        )
+
+        # Convert to RouteCandidate format
+        candidates = []
+        for fc in fast_candidates:
+            distance = self._haversine_distance(from_lat, from_lon, fc.lat, fc.lon)
+            
+            # Estimate total route completion
+            estimated_completion = route.total_distance + distance
+            if route.start_node != from_node:
+                return_estimate = self._haversine_distance(fc.lat, fc.lon,
+                                                         session.graph.nodes[route.start_node]["y"],
+                                                         session.graph.nodes[route.start_node]["x"])
+                estimated_completion += return_estimate
+
+            candidates.append(RouteCandidate(
+                node_id=fc.node_id,
+                lat=fc.lat,
+                lon=fc.lon,
+                value_score=fc.overall_score,
+                distance_from_current=distance,
+                estimated_route_completion=estimated_completion,
+                explanation=fc.explanation,
+                semantic_scores=fc.semantic_scores,
+                semantic_details=fc.semantic_details
+            ))
+
+        logger.info(f"Generated {len(candidates)} candidates using ultra-fast semantic scoring")
+        
+        # Fallback: If fast generator returns no candidates, try regular generator
+        if len(candidates) == 0:
+            logger.warning("Fast generator returned 0 candidates, falling back to regular generator")
+            return self._generate_candidates_regular(session, from_node)
+        
+        return candidates
+    
+    def _generate_candidates_regular(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
+        """Generate candidates using regular semantic precomputation (fallback)."""
+        route = session.active_route
+
+        # Ensure semantic scores are precomputed for this area
+        if not session.semantic_cache_key:
+            logger.info("Precomputing semantic scores for session area (regular)")
+            session.semantic_cache_key = self.semantic_candidate_generator.precompute_area_scores(
+                session.graph, 
+                session.graph_center[0], 
+                session.graph_center[1],
+                session.graph_radius,
+                route.preference
+            )
+
+        # Calculate target radius based on remaining distance
+        remaining_distance = route.target_distance - route.total_distance
+        slack_factor = 1.2
+        target_radius = slack_factor * remaining_distance / (2 * math.pi)
+        target_radius = max(200, min(target_radius, 2000))
+
+        from_lat = session.graph.nodes[from_node]["y"]
+        from_lon = session.graph.nodes[from_node]["x"]
+
+        logger.info(f"Regular candidate generation from node {from_node} with radius {target_radius:.0f}m")
+
+        # Get candidates using precomputed semantic scores
+        exclude_nodes = set(route.current_waypoints)
+        
+        # Also exclude nodes too close to existing waypoints
+        for node, data in session.graph.nodes(data=True):
+            if self._too_close_to_existing_waypoints_in_session(session, node, min_distance=100):
+                exclude_nodes.add(node)
+
+        precomputed_candidates = self.semantic_candidate_generator.generate_candidates_fast(
+            session.semantic_cache_key,
+            from_lat,
+            from_lon, 
+            target_radius,
+            exclude_nodes,
+            min_score=0.2,
+            randomize=True  # Enable probabilistic selection for non-deterministic results
+        )
+
+        # Convert to RouteCandidate format
+        candidates = []
+        for pc in precomputed_candidates:
+            distance = self._haversine_distance(from_lat, from_lon, pc.lat, pc.lon)
+            
+            # Estimate total route completion
+            estimated_completion = route.total_distance + distance
+            if route.start_node != from_node:
+                return_estimate = self._haversine_distance(pc.lat, pc.lon,
+                                                         session.graph.nodes[route.start_node]["y"],
+                                                         session.graph.nodes[route.start_node]["x"])
+                estimated_completion += return_estimate
+
+            candidates.append(RouteCandidate(
+                node_id=pc.node_id,
+                lat=pc.lat,
+                lon=pc.lon,
+                value_score=pc.overall_score,
+                distance_from_current=distance,
+                estimated_route_completion=estimated_completion,
+                explanation=pc.explanation,
+                semantic_scores=pc.semantic_scores,
+                semantic_details=pc.semantic_details
+            ))
+
+        logger.info(f"Generated {len(candidates)} candidates using regular semantic scoring")
+        return candidates
+
+    def _generate_candidates_distance_only(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
+        """Generate candidates quickly using distance-based approach only (emergency fallback)."""
         if not session.active_route:
             raise ValueError("No active route in session")
 
@@ -154,57 +382,61 @@ class InteractiveRouteBuilder:
 
         # Calculate target radius based on remaining distance
         remaining_distance = route.target_distance - route.total_distance
-        slack_factor = 1.2  # Allow some flexibility
+        slack_factor = 1.2
         target_radius = slack_factor * remaining_distance / (2 * math.pi)
-
-        # Don't make radius too small or too large
         target_radius = max(200, min(target_radius, 2000))
 
-        logger.info(f"Generating candidates from node {from_node} with radius {target_radius:.0f}m")
-
-        candidates = []
         from_lat = session.graph.nodes[from_node]["y"]
         from_lon = session.graph.nodes[from_node]["x"]
 
-        # Find candidate nodes within radius
+        logger.info(f"Emergency distance-only candidate generation from node {from_node} with radius {target_radius:.0f}m")
+
+        # Get nearby nodes based on distance only (no semantic computation)
+        candidates = []
+        exclude_nodes = set(route.current_waypoints)
+        
+        # Find nodes within target radius
         for node, data in session.graph.nodes(data=True):
-            if node in route.current_waypoints:
-                continue  # Skip already used waypoints
-
-            # Check if too close to existing waypoints (conflict avoidance)
-            if self._too_close_to_existing_waypoints_in_session(session, node, min_distance=100):
+            if node in exclude_nodes:
                 continue
-
-            node_lat, node_lon = data["y"], data["x"]
+                
+            node_lat, node_lon = data['y'], data['x']
             distance = self._haversine_distance(from_lat, from_lon, node_lat, node_lon)
+            
+            # Filter by distance and minimum spacing
+            if distance < target_radius and distance > 100:  # At least 100m away
+                if not self._too_close_to_existing_waypoints_in_session(session, node, min_distance=150):
+                    # Simple score based on distance (prefer moderate distances)
+                    optimal_distance = target_radius * 0.6
+                    distance_score = 1.0 - abs(distance - optimal_distance) / target_radius
+                    distance_score = max(0.1, distance_score)
+                    
+                    # Estimate total route completion
+                    estimated_completion = route.total_distance + distance
+                    if route.start_node != from_node:
+                        return_estimate = self._haversine_distance(node_lat, node_lon,
+                                                                 session.graph.nodes[route.start_node]["y"],
+                                                                 session.graph.nodes[route.start_node]["x"])
+                        estimated_completion += return_estimate
 
-            # Filter by distance
-            if distance < target_radius * 0.5 or distance > target_radius * 1.5:
-                continue
+                    candidates.append(RouteCandidate(
+                        node_id=node,
+                        lat=node_lat,
+                        lon=node_lon,
+                        value_score=distance_score,
+                        distance_from_current=distance,
+                        estimated_route_completion=estimated_completion,
+                        explanation=f"Distance-based candidate ({distance:.0f}m away)",
+                        semantic_scores={"distance": distance_score},
+                        semantic_details="Emergency fallback - no semantic analysis"
+                    ))
 
-            # Calculate value score using semantic matcher
-            value_score, explanation = self._calculate_node_value_for_session(session, node)
+        # Sort by score and return top candidates
+        candidates.sort(key=lambda x: x.value_score, reverse=True)
+        top_candidates = candidates[:3]
 
-            # Estimate total route completion if this becomes final destination
-            estimated_completion = route.total_distance + distance
-            if route.start_node != from_node:  # Add return distance estimate
-                return_estimate = self._haversine_distance(node_lat, node_lon,
-                                                         session.graph.nodes[route.start_node]["y"],
-                                                         session.graph.nodes[route.start_node]["x"])
-                estimated_completion += return_estimate
-
-            candidates.append(RouteCandidate(
-                node_id=node,
-                lat=node_lat,
-                lon=node_lon,
-                value_score=value_score,
-                distance_from_current=distance,
-                estimated_route_completion=estimated_completion,
-                explanation=explanation  # Add explanation to candidate
-            ))
-
-        # Select diverse candidates by direction
-        return self._select_diverse_candidates(candidates, from_lat, from_lon)
+        logger.info(f"Generated {len(top_candidates)} distance-only candidates (emergency fallback)")
+        return top_candidates
 
     def _too_close_to_existing_waypoints_in_session(self, session: ClientSession, node: int, min_distance: float) -> bool:
         """Check if node is too close to existing waypoints in session."""
@@ -224,48 +456,29 @@ class InteractiveRouteBuilder:
 
         return False
 
-    def _calculate_node_value_for_session(self, session: ClientSession, node: int) -> tuple[float, str]:
-        """Calculate value score and explanation for a node using session's route preferences."""
-        if not session.active_route:
-            return 0.5, "No active route"
-
-        route = session.active_route
-        try:
-            # Check if we have a semantic grid for fast lookup
-            semantic_grid = self._get_semantic_grid_for_session(session)
-            if semantic_grid:
-                # Fast grid-based lookup
-                node_data = session.graph.nodes[node]
-                lat, lon = node_data['y'], node_data['x']
-                return semantic_grid.get_semantic_score(lat, lon, route.preference)
-            else:
-                # Fallback to detailed analysis
-                if hasattr(session.semantic_matcher, 'calculate_node_value'):
-                    return session.semantic_matcher.calculate_node_value(node, route.value_function, session.graph)
-                else:
-                    return 0.5, "Basic walkable area"
-        except Exception:
-            return 0.5, "Unable to analyze location"
-
-    def _get_semantic_grid_for_session(self, session: ClientSession):
-        """Get semantic grid for session from cache if available."""
-        try:
-            lat, lon = session.graph_center
-            return self.persistent_cache.get_semantic_grid(lat, lon, session.graph_radius)
-        except Exception:
-            return None
-
     def start_route(self, client_id: str, lat: float, lon: float, preference: str, target_distance: int = 8000) -> dict:
         """
         Start a new route within client session.
-        Uses cached graph for fast performance.
+        Uses cached graph for fast performance with optimized initial loading.
         """
-        logger.info(f"Starting route for client {client_id} at ({lat:.6f}, {lon:.6f})")
+        logger.info(f"Starting route for client {client_id} at ({lat:.6f}, {lon:.6f}) - optimized mode")
+        
+        loading_phases = []
+        start_time = time.time()
 
-        # Get or create client session (uses cached graph)
-        session = self.get_or_create_client_session(client_id, lat, lon)
+        # Phase 1: Graph loading
+        phase_start = time.time()
+        session = self.get_or_create_client_session(client_id, lat, lon, radius=6000)  # 6km instead of 8km
+        loading_phases.append({
+            "phase": "graph_loading",
+            "description": "Loading street network graph",
+            "duration_ms": int((time.time() - phase_start) * 1000),
+            "completed": True
+        })
 
-        # Find start node in cached graph
+        # Phase 2: Route initialization
+        phase_start = time.time()
+        import osmnx as ox
         start_node = ox.nearest_nodes(session.graph, lon, lat)
 
         # Create value function from preferences
@@ -287,10 +500,30 @@ class InteractiveRouteBuilder:
 
         # Set active route in session
         session.active_route = route_state
+        loading_phases.append({
+            "phase": "route_initialization",
+            "description": "Initializing route parameters",
+            "duration_ms": int((time.time() - phase_start) * 1000),
+            "completed": True
+        })
 
-        # Generate initial candidates using cached graph
+        # Phase 3: Semantic data processing (this is the potentially slow part)
+        phase_start = time.time()
+        was_semantic_cached = session.semantic_cache_key is not None
         candidates = self._generate_candidates_for_session(session, start_node)
+        semantic_duration = int((time.time() - phase_start) * 1000)
+        
+        loading_phases.append({
+            "phase": "semantic_analysis",
+            "description": "Analyzing natural features and generating candidates",
+            "duration_ms": semantic_duration,
+            "completed": True,
+            "was_cached": was_semantic_cached,
+            "nodes_analyzed": len(session.graph.nodes) if hasattr(session, 'graph') else 0
+        })
 
+        total_duration = int((time.time() - start_time) * 1000)
+        
         return {
             "session_id": client_id,  # Use client_id as session_id for frontend compatibility
             "start_location": {
@@ -305,7 +538,15 @@ class InteractiveRouteBuilder:
                     "value_score": c.value_score,
                     "distance": c.distance_from_current,
                     "estimated_completion": c.estimated_route_completion,
-                    "explanation": c.explanation
+                    "explanation": c.explanation,
+                    "semantic_scores": c.semantic_scores or {},
+                    "semantic_details": c.semantic_details or "",
+                    "score_breakdown": {
+                        "forests": c.semantic_scores.get('forests', 0.0) if c.semantic_scores else 0.0,
+                        "rivers": c.semantic_scores.get('rivers', 0.0) if c.semantic_scores else 0.0,
+                        "lakes": c.semantic_scores.get('lakes', 0.0) if c.semantic_scores else 0.0,
+                        "overall": c.value_score
+                    }
                 }
                 for c in candidates
             ],
@@ -313,6 +554,19 @@ class InteractiveRouteBuilder:
                 "current_distance": 0.0,
                 "target_distance": target_distance,
                 "progress": 0.0
+            },
+            "loading_phases": loading_phases,
+            "performance": {
+                "total_duration_ms": total_duration,
+                "semantic_cached": was_semantic_cached,
+                "graph_nodes": len(session.graph.nodes),
+                "candidates_generated": len(candidates)
+            },
+            "semantic_precomputation": {
+                "was_cached": was_semantic_cached,
+                "computation_time_ms": semantic_duration,
+                "nodes_processed": len(session.graph.nodes),
+                "cache_key": session.semantic_cache_key or ""
             }
         }
 
@@ -376,7 +630,15 @@ class InteractiveRouteBuilder:
                     "value_score": c.value_score,
                     "distance": c.distance_from_current,
                     "estimated_completion": c.estimated_route_completion,
-                    "explanation": c.explanation
+                    "explanation": c.explanation,
+                    "semantic_scores": c.semantic_scores or {},
+                    "semantic_details": c.semantic_details or "",
+                    "score_breakdown": {
+                        "forests": c.semantic_scores.get('forests', 0.0) if c.semantic_scores else 0.0,
+                        "rivers": c.semantic_scores.get('rivers', 0.0) if c.semantic_scores else 0.0,
+                        "lakes": c.semantic_scores.get('lakes', 0.0) if c.semantic_scores else 0.0,
+                        "overall": c.value_score
+                    }
                 }
                 for c in candidates
             ],
@@ -517,7 +779,7 @@ class InteractiveRouteBuilder:
         }
 
 
-    def _plan_path_segment(self, graph: nx.MultiGraph, start: int, end: int,
+    def _plan_path_segment(self, graph: 'nx.MultiGraph', start: int, end: int,
                           used_edges: set[tuple[int, int]]) -> list[int]:
         """Plan shortest path avoiding used edges where possible."""
         try:
@@ -530,13 +792,14 @@ class InteractiveRouteBuilder:
                     for key in temp_graph[edge[0]][edge[1]]:
                         temp_graph[edge[0]][edge[1]][key]['length'] *= 10  # Heavy penalty
 
+            import networkx as nx
             path = nx.shortest_path(temp_graph, start, end, weight='length')
             return path
         except nx.NetworkXNoPath:
             logger.warning(f"No path found from {start} to {end}")
             return []
 
-    def _plan_shortest_disjunct_path(self, graph: nx.MultiGraph, start: int, end: int,
+    def _plan_shortest_disjunct_path(self, graph: 'nx.MultiGraph', start: int, end: int,
                                    used_edges: set[tuple[int, int]]) -> list[int]:
         """Plan path avoiding used edges completely for final return path."""
         try:
@@ -550,6 +813,7 @@ class InteractiveRouteBuilder:
 
             temp_graph.remove_edges_from(edges_to_remove)
 
+            import networkx as nx
             path = nx.shortest_path(temp_graph, start, end, weight='length')
             return path
         except nx.NetworkXNoPath:
@@ -563,7 +827,7 @@ class InteractiveRouteBuilder:
             edge = (min(path[i], path[i+1]), max(path[i], path[i+1]))
             route.used_edges.add(edge)
 
-    def _calculate_path_distance(self, graph: nx.MultiGraph, path: list[int]) -> float:
+    def _calculate_path_distance(self, graph: 'nx.MultiGraph', path: list[int]) -> float:
         """Calculate total distance of a path."""
         if len(path) < 2:
             return 0.0
@@ -693,19 +957,34 @@ class InteractiveRouteBuilder:
 
         return abs(area) / 2.0
 
-    def _load_graph(self, lat: float, lon: float, radius: float = 8000) -> nx.MultiGraph:
+    def _load_graph(self, lat: float, lon: float, radius: float = 8000) -> 'nx.MultiGraph':
         """Load OSM graph for the given location."""
         logger.info(f"Loading OSM graph for ({lat:.6f}, {lon:.6f}) with radius {radius}m")
 
         try:
+            import osmnx as ox
+            import networkx as nx
+            
+            # Use simplified filter for faster loading
+            if radius <= 6000:
+                # For smaller areas, use simplified filter for faster loading
+                custom_filter = '["highway"~"footway|path|residential"]'
+            else:
+                # For larger areas, use full filter
+                custom_filter = (
+                    '["highway"~"path|track|footway|steps|bridleway|cycleway|'
+                    'pedestrian|living_street|residential|tertiary"]'
+                )
+                
+            # Set global timeout for requests
+            import requests
+            ox.settings.timeout = 60
+            
             G = ox.graph_from_point(
                 (lat, lon),
                 dist=radius,
                 network_type="walk",
-                custom_filter=(
-                    '["highway"~"path|track|footway|steps|bridleway|cycleway|'
-                    'pedestrian|living_street|residential|tertiary"]'
-                ),
+                custom_filter=custom_filter
             )
 
             logger.info(f"Loaded graph with {len(G.nodes())} nodes and {len(G.edges())} edges")
@@ -724,7 +1003,7 @@ class InteractiveRouteBuilder:
 
     def get_cache_statistics(self) -> dict:
         """Get comprehensive cache statistics."""
-        persistent_stats = self.persistent_cache.get_cache_stats()
+        persistent_stats = self.persistent_cache.get_cache_statistics()
 
         return {
             "persistent_cache": persistent_stats,

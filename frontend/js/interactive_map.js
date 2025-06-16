@@ -186,11 +186,6 @@ class InteractiveMapEditor {
      */
     async startRoutingSession(lat, lon) {
         try {
-            // Show loading indicator
-            if (window.perfect10kApp) {
-                window.perfect10kApp.showLoading();
-            }
-            
             // Get user preferences
             const preferences = document.getElementById('preferencesInput').value || 
                                document.getElementById('preferencesInputMobile')?.value || 
@@ -201,7 +196,7 @@ class InteractiveMapEditor {
             
             console.log('Starting session with:', { lat, lon, preferences, targetDistance });
             
-            // Start session via API
+            // Start session via API - the loading animation is handled by the API client
             const response = await window.apiClient.startSession(lat, lon, preferences, targetDistance);
             
             console.log('Session start response:', response);
@@ -209,6 +204,8 @@ class InteractiveMapEditor {
             // The new API returns data directly without a "success" wrapper
             if (response.session_id && response.candidates) {
                 this.sessionId = response.session_id;
+                console.log('Interactive map session ID set to:', this.sessionId);
+                console.log('API client session ID:', window.apiClient.currentSession);
                 this.waypoints = [{lat, lon}];
                 
                 // Clear existing route display (but keep start marker) - but don't reset routeBuilding
@@ -235,11 +232,6 @@ class InteractiveMapEditor {
         } catch (error) {
             console.error('Failed to start routing session:', error);
             this.showMessage(`Failed to start routing: ${error.message}`, 'error');
-        } finally {
-            // Hide loading indicator
-            if (window.perfect10kApp) {
-                window.perfect10kApp.hideLoading();
-            }
         }
     }
     
@@ -376,11 +368,17 @@ class InteractiveMapEditor {
             }).addTo(this.map);
             
             // Add popup with actions
+            const semanticScoresHtml = this.generateSemanticScoresHtml(candidate);
             const popupContent = `
                 <div class="candidate-popup">
                     <h4>Candidate ${index + 1}</h4>
                     <p><strong>Distance:</strong> ${(candidate.distance / 1000).toFixed(1)}km</p>
-                    <p><strong>Why this spot:</strong> ${candidate.explanation || 'Basic walkable area'}</p>
+                    <div class="semantic-scores">
+                        <p><strong>Location Features:</strong></p>
+                        ${semanticScoresHtml}
+                        <p class="semantic-summary"><strong>Why this spot:</strong> ${candidate.explanation || 'Basic walkable area'}</p>
+                        ${candidate.semantic_details ? `<p class="semantic-details">${candidate.semantic_details}</p>` : ''}
+                    </div>
                     <div class="candidate-actions">
                         <button class="btn btn-light-green btn-sm" onclick="window.interactiveMap.addWaypoint(${candidate.node_id})">
                             Add Waypoint
@@ -458,6 +456,72 @@ class InteractiveMapEditor {
             return steps * 0.8; // Convert steps to meters
         }
         return 8000; // Default 10k steps = 8km
+    }
+    
+    /**
+     * Generate HTML for semantic scores display
+     */
+    generateSemanticScoresHtml(candidate) {
+        if (!candidate.score_breakdown) {
+            return '<p class="no-scores">No semantic data available</p>';
+        }
+        
+        const scoreBreakdown = candidate.score_breakdown;
+        const overallScore = scoreBreakdown.overall || 0;
+        
+        // Create score bars for each feature
+        let html = '<div class="score-breakdown">';
+        
+        const features = [
+            { key: 'forests', label: 'Forests & Parks', icon: '🌲', color: '#228B22' },
+            { key: 'rivers', label: 'Rivers & Streams', icon: '🌊', color: '#0077BE' },
+            { key: 'lakes', label: 'Lakes & Water', icon: '🏞️', color: '#4169E1' }
+        ];
+        
+        features.forEach(feature => {
+            const score = scoreBreakdown[feature.key] || 0;
+            const percentage = Math.round(score * 100);
+            const scoreClass = this.getScoreClass(score);
+            
+            html += `
+                <div class="score-item">
+                    <span class="score-icon">${feature.icon}</span>
+                    <span class="score-label">${feature.label}:</span>
+                    <div class="score-bar">
+                        <div class="score-fill ${scoreClass}" style="width: ${percentage}%; background-color: ${feature.color}"></div>
+                        <span class="score-text">${percentage}%</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        // Overall score
+        const overallPercentage = Math.round(overallScore * 100);
+        const overallClass = this.getScoreClass(overallScore);
+        
+        html += `
+            <div class="score-item overall-score">
+                <span class="score-icon">⭐</span>
+                <span class="score-label"><strong>Overall Score:</strong></span>
+                <div class="score-bar">
+                    <div class="score-fill ${overallClass}" style="width: ${overallPercentage}%; background-color: #626F47"></div>
+                    <span class="score-text"><strong>${overallPercentage}%</strong></span>
+                </div>
+            </div>
+        `;
+        
+        html += '</div>';
+        return html;
+    }
+    
+    /**
+     * Get CSS class for score level
+     */
+    getScoreClass(score) {
+        if (score >= 0.7) return 'score-high';
+        if (score >= 0.4) return 'score-medium';
+        if (score >= 0.1) return 'score-low';
+        return 'score-none';
     }
     
     /**

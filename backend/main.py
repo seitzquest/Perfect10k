@@ -4,30 +4,44 @@ New simplified approach for user-driven route construction.
 """
 
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from interactive_router import InteractiveRouteBuilder
 from loguru import logger
 from pydantic import BaseModel
-from semantic_overlays import SemanticOverlayManager, BoundingBox
 
-# Configure logging
+# Lazy imports to improve startup performance
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from interactive_router import InteractiveRouteBuilder
+    from semantic_overlays import SemanticOverlayManager, BoundingBox
+
+# Configure minimal logging for faster startup (file logging configured on first use)
 logger.remove()  # Remove default handler
 logger.add(
-    "perfect10k.log",
-    rotation="10 MB",
-    retention="7 days",
-    level="INFO",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
-)
-logger.add(
-    lambda msg: print(msg, end=""),  # Console output
+    lambda msg: print(msg, end=""),  # Console output only during startup
     level="INFO",
     format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | <cyan>{function}</cyan> | {message}",
 )
+
+# File logging will be added on first API call to avoid startup I/O
+_file_logging_configured = False
+
+def ensure_file_logging():
+    """Configure file logging on first use to improve startup performance."""
+    global _file_logging_configured
+    if not _file_logging_configured:
+        logger.add(
+            "perfect10k.log",
+            rotation="10 MB",
+            retention="7 days",
+            level="INFO",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
+        )
+        _file_logging_configured = True
 
 app = FastAPI(
     title="Perfect10k Interactive Route Builder",
@@ -44,14 +58,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for frontend
-app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+# Mount static files for frontend (only if directory exists)
+if Path("../frontend").exists():
+    app.mount("/static", StaticFiles(directory="../frontend"), name="static")
 
-# Global route builder instance
-route_builder = InteractiveRouteBuilder()
+# Lazy-loaded global instances to improve startup performance
+route_builder = None
+overlay_manager = None
 
-# Global semantic overlay manager instance
-overlay_manager = SemanticOverlayManager()
+
+def get_route_builder():
+    """Get route builder instance (lazy initialization for faster startup)."""
+    global route_builder
+    if route_builder is None:
+        from interactive_router import InteractiveRouteBuilder
+        route_builder = InteractiveRouteBuilder()
+    return route_builder
+
+
+def get_overlay_manager():
+    """Get overlay manager instance (lazy initialization for faster startup)."""
+    global overlay_manager
+    if overlay_manager is None:
+        from semantic_overlays import SemanticOverlayManager
+        overlay_manager = SemanticOverlayManager()
+    return overlay_manager
 
 
 # Request/Response Models
@@ -81,6 +112,12 @@ class SemanticOverlayRequest(BaseModel):
     use_cache: bool = True
 
 
+class SemanticScoringRequest(BaseModel):
+    locations: list[tuple[float, float]]  # List of (lat, lon) tuples
+    property_names: list[str] = ["forests", "rivers", "lakes"]
+    ensure_loaded_radius: float = 2.0  # km radius to ensure features are loaded
+
+
 # Utility function to generate client ID
 def get_client_id(request: Request, provided_id: str | None = None) -> str:
     """Generate or use provided client ID."""
@@ -96,11 +133,12 @@ def get_client_id(request: Request, provided_id: str | None = None) -> str:
 @app.post("/api/start-session")
 async def start_session(request_data: StartRouteRequest, request: Request):
     """Initialize a new interactive routing session (optimized with caching)."""
+    ensure_file_logging()  # Configure file logging on first API call
     client_id = get_client_id(request, request_data.client_id)
     logger.info(f"Starting route for client {client_id} at ({request_data.lat:.6f}, {request_data.lon:.6f})")
 
     try:
-        result = route_builder.start_route(
+        result = get_route_builder().start_route(
             client_id=client_id,
             lat=request_data.lat,
             lon=request_data.lon,
@@ -108,12 +146,83 @@ async def start_session(request_data: StartRouteRequest, request: Request):
             target_distance=request_data.target_distance
         )
 
+        # Add loading state information to help frontend show appropriate feedback
+        result["loading_info"] = {
+            "was_cached": result.get("semantic_precomputation", {}).get("was_cached", False),
+            "computation_time_ms": result.get("semantic_precomputation", {}).get("computation_time_ms", 0),
+            "nodes_processed": result.get("semantic_precomputation", {}).get("nodes_processed", 0),
+            "cache_key": result.get("semantic_precomputation", {}).get("cache_key", ""),
+            "loading_phases": result.get("loading_phases", [])
+        }
+
         logger.info(f"Route started for client {client_id} with {len(result['candidates'])} candidates")
         return result
 
     except Exception as e:
         logger.error(f"Failed to start route: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to start route: {str(e)}") from e
+
+
+@app.post("/api/start-session-async")
+async def start_session_async(request_data: StartRouteRequest, request: Request):
+    """Initialize a new interactive routing session asynchronously."""
+    ensure_file_logging()
+    client_id = get_client_id(request, request_data.client_id)
+    logger.info(f"Starting async route for client {client_id} at ({request_data.lat:.6f}, {request_data.lon:.6f})")
+
+    try:
+        from async_job_manager import start_route_analysis_async
+        
+        job_id = start_route_analysis_async(
+            get_route_builder(),
+            client_id=client_id,
+            lat=request_data.lat,
+            lon=request_data.lon,
+            preference=request_data.preference,
+            target_distance=request_data.target_distance
+        )
+
+        return {
+            "job_id": job_id,
+            "status": "started",
+            "message": "Route analysis started in background",
+            "client_id": client_id,
+            "poll_url": f"/api/job-status/{job_id}"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to start async route: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start async route: {str(e)}") from e
+
+
+@app.get("/api/job-status/{job_id}")
+async def get_job_status(job_id: str):
+    """Get status of a background job."""
+    try:
+        from async_job_manager import job_manager
+        
+        status = job_manager.get_job_status(job_id)
+        if not status:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        return status
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get job status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}") from e
+
+
+@app.get("/api/jobs/stats")
+async def get_job_stats():
+    """Get job manager statistics."""
+    try:
+        from async_job_manager import job_manager
+        return job_manager.get_stats()
+    except Exception as e:
+        logger.error(f"Failed to get job stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get job stats: {str(e)}") from e
 
 
 @app.post("/api/add-waypoint")
@@ -124,7 +233,7 @@ async def add_waypoint(request: AddWaypointRequest):
     logger.info(f"Adding waypoint {request.node_id} to client {client_id}")
 
     try:
-        result = route_builder.add_waypoint(client_id, request.node_id)
+        result = get_route_builder().add_waypoint(client_id, request.node_id)
 
         logger.info(f"Waypoint added. Route now {result['route_stats']['current_distance']:.0f}m")
         return result
@@ -145,7 +254,7 @@ async def finalize_route(request: FinalizeRouteRequest):
     logger.info(f"Finalizing route for client {client_id} with destination {request.final_node_id}")
 
     try:
-        result = route_builder.finalize_route(client_id, request.final_node_id)
+        result = get_route_builder().finalize_route(client_id, request.final_node_id)
 
         logger.success(f"Route finalized: {result['route_stats']['total_distance']:.0f}m")
         return result
@@ -162,7 +271,7 @@ async def finalize_route(request: FinalizeRouteRequest):
 async def get_route_status(client_id: str):
     """Get current route status and statistics."""
     try:
-        result = route_builder.get_route_status(client_id)
+        result = get_route_builder().get_route_status(client_id)
         return result
 
     except ValueError as e:
@@ -178,7 +287,7 @@ async def list_sessions():
     sessions = []
     current_time = time.time()
 
-    for client_id, session in route_builder.client_sessions.items():
+    for client_id, session in get_route_builder().client_sessions.items():
         session_info = {
             "client_id": client_id,
             "created_at": session.created_at,
@@ -201,15 +310,15 @@ async def list_sessions():
 
     return {
         "active_sessions": sessions,
-        "cached_graphs": len(route_builder.graph_cache)
+        "cached_graphs": len(get_route_builder().graph_cache)
     }
 
 
 @app.delete("/api/session/{client_id}")
 async def delete_session(client_id: str):
     """Delete a client session (cleanup)."""
-    if client_id in route_builder.client_sessions:
-        del route_builder.client_sessions[client_id]
+    if client_id in get_route_builder().client_sessions:
+        del get_route_builder().client_sessions[client_id]
         return {"success": True, "message": f"Client session {client_id} deleted"}
     else:
         raise HTTPException(status_code=404, detail="Client session not found")
@@ -319,26 +428,107 @@ async def serve_frontend():
 async def get_cache_statistics():
     """Get comprehensive cache statistics."""
     try:
-        stats = route_builder.get_cache_statistics()
+        stats = get_route_builder().get_cache_statistics()
         return stats
     except Exception as e:
         logger.error(f"Failed to get cache statistics: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get cache statistics: {str(e)}") from e
 
 
+@app.get("/api/performance-stats")
+async def get_performance_statistics():
+    """Get comprehensive performance statistics including fast generation metrics."""
+    try:
+        route_builder = get_route_builder()
+        stats = {
+            "cache_stats": route_builder.get_cache_statistics(),
+            "session_count": len(route_builder.client_sessions)
+        }
+        
+        # Add fast generator stats if available
+        if hasattr(route_builder, 'fast_candidate_generator') and route_builder.fast_candidate_generator:
+            stats["fast_generator_stats"] = route_builder.fast_candidate_generator.get_performance_stats()
+        
+        # Add regular generator stats if available  
+        if hasattr(route_builder, 'semantic_candidate_generator') and route_builder.semantic_candidate_generator:
+            stats["regular_generator_stats"] = route_builder.semantic_candidate_generator.get_cache_stats()
+            
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to get performance statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get performance statistics: {str(e)}") from e
+
+
+@app.post("/api/toggle-fast-generation")
+async def toggle_fast_generation(enable_fast: bool = True):
+    """Toggle between fast and regular candidate generation."""
+    try:
+        # This could be stored in a global setting or per-session
+        # For now, we'll just return the current capability
+        route_builder = get_route_builder()
+        
+        fast_available = (hasattr(route_builder, 'fast_candidate_generator') and 
+                         route_builder.fast_candidate_generator is not None)
+        
+        return {
+            "success": True,
+            "fast_generation_requested": enable_fast,
+            "fast_generation_available": fast_available,
+            "message": f"Fast generation {'enabled' if enable_fast and fast_available else 'disabled/unavailable'}",
+            "fallback_available": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to toggle fast generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to toggle fast generation: {str(e)}") from e
+
+
 @app.post("/api/cleanup-sessions")
 async def cleanup_old_sessions(max_age_hours: float = 24.0):
     """Clean up old client sessions."""
     try:
-        route_builder.cleanup_old_sessions(max_age_hours)
+        get_route_builder().cleanup_old_sessions(max_age_hours)
         return {
             "success": True,
             "message": f"Cleaned up sessions older than {max_age_hours} hours",
-            "remaining_sessions": len(route_builder.client_sessions)
+            "remaining_sessions": len(get_route_builder().client_sessions)
         }
     except Exception as e:
         logger.error(f"Failed to cleanup sessions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to cleanup sessions: {str(e)}") from e
+
+
+@app.post("/api/clear-semantic-cache")
+async def clear_semantic_candidate_cache():
+    """Clear semantic candidate cache to get fresh probabilistic results."""
+    try:
+        route_builder = get_route_builder()
+        
+        # Clear cache in semantic candidate generator
+        route_builder.semantic_candidate_generator.clear_cache()
+        
+        # Clear fast generator cache if available
+        if hasattr(route_builder, 'fast_candidate_generator') and route_builder.fast_candidate_generator:
+            route_builder.fast_candidate_generator.clear_cache()
+        
+        # Also clear cache keys in active sessions to force recomputation
+        cleared_sessions = 0
+        for session in route_builder.client_sessions.values():
+            session.semantic_cache_key = None
+            if hasattr(session, 'fast_cache_key'):
+                session.fast_cache_key = None
+            cleared_sessions += 1
+        
+        return {
+            "success": True,
+            "message": "Cleared all semantic candidate caches - next requests will get fresh probabilistic results",
+            "active_sessions_reset": cleared_sessions,
+            "caches_cleared": ["semantic_cache", "fast_cache", "session_cache_keys"]
+        }
+    except Exception as e:
+        logger.error(f"Failed to clear semantic cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear semantic cache: {str(e)}") from e
 
 
 @app.post("/api/semantic-overlays")
@@ -346,7 +536,7 @@ async def get_semantic_overlays(request: SemanticOverlayRequest):
     """Get semantic overlay data for specified area and feature types."""
     try:
         # Calculate bounding box from center point and radius
-        bbox = overlay_manager.calculate_bbox_from_center(
+        bbox = get_overlay_manager().calculate_bbox_from_center(
             request.lat, request.lon, request.radius_km
         )
         
@@ -355,8 +545,8 @@ async def get_semantic_overlays(request: SemanticOverlayRequest):
         # Get overlays for requested feature types
         overlays = {}
         for feature_type in request.feature_types:
-            if feature_type in overlay_manager.feature_configs:
-                overlays[feature_type] = overlay_manager.get_semantic_overlays(
+            if feature_type in get_overlay_manager().feature_configs:
+                overlays[feature_type] = get_overlay_manager().get_semantic_overlays(
                     feature_type, bbox, request.use_cache
                 )
             else:
@@ -395,14 +585,14 @@ async def get_single_semantic_overlay(
     """Get semantic overlay data for a single feature type."""
     try:
         # Calculate bounding box from center point and radius
-        bbox = overlay_manager.calculate_bbox_from_center(lat, lon, radius_km)
+        bbox = get_overlay_manager().calculate_bbox_from_center(lat, lon, radius_km)
         
         logger.info(f"Getting {feature_type} overlay around ({lat:.6f}, {lon:.6f}) with radius {radius_km}km")
         
-        if feature_type not in overlay_manager.feature_configs:
+        if feature_type not in get_overlay_manager().feature_configs:
             raise HTTPException(status_code=400, detail=f"Unknown feature type: {feature_type}")
         
-        overlay_data = overlay_manager.get_semantic_overlays(feature_type, bbox, use_cache)
+        overlay_data = get_overlay_manager().get_semantic_overlays(feature_type, bbox, use_cache)
         
         return {
             "success": True,
@@ -432,13 +622,13 @@ async def get_semantic_overlays_info():
     """Get information about available semantic overlay types."""
     feature_info = {}
     
-    for feature_type, config in overlay_manager.feature_configs.items():
+    for feature_type, config in get_overlay_manager().feature_configs.items():
         feature_info[feature_type] = {
             "style": config["style"],
             "description": f"OSM {feature_type} features"
         }
     
-    cache_stats = overlay_manager.get_cache_stats()
+    cache_stats = get_overlay_manager().get_cache_stats()
     
     return {
         "available_features": feature_info,
@@ -449,7 +639,7 @@ async def get_semantic_overlays_info():
                 "GET /api/semantic-overlays/{feature_type} - Get single overlay type",
                 "GET /api/semantic-overlays-info - Get this info"
             ],
-            "supported_features": list(overlay_manager.feature_configs.keys())
+            "supported_features": list(get_overlay_manager().feature_configs.keys())
         }
     }
 
@@ -458,7 +648,7 @@ async def get_semantic_overlays_info():
 async def clear_semantic_overlay_cache(older_than_hours: int = None):
     """Clear semantic overlay cache."""
     try:
-        cleared_count = overlay_manager.clear_cache(older_than_hours)
+        cleared_count = get_overlay_manager().clear_cache(older_than_hours)
         return {
             "success": True,
             "cleared_files": cleared_count,
@@ -470,10 +660,109 @@ async def clear_semantic_overlay_cache(older_than_hours: int = None):
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}") from e
 
 
+@app.post("/api/semantic-scoring")
+async def score_locations_semantically(request: SemanticScoringRequest):
+    """Score multiple locations based on proximity to semantic features."""
+    try:
+        # Ensure features are loaded for the area
+        if request.locations:
+            # Use centroid of locations to determine loading area
+            center_lat = sum(lat for lat, lon in request.locations) / len(request.locations)
+            center_lon = sum(lon for lat, lon in request.locations) / len(request.locations)
+            
+            get_overlay_manager().ensure_features_loaded_for_area(
+                center_lat, center_lon, request.ensure_loaded_radius
+            )
+        
+        # Score all locations
+        scores = get_overlay_manager().score_multiple_locations(
+            request.locations, request.property_names
+        )
+        
+        return {
+            "success": True,
+            "scores": scores,
+            "metadata": {
+                "locations_count": len(request.locations),
+                "properties_scored": request.property_names,
+                "semantic_properties_info": get_overlay_manager().get_semantic_property_info()
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to score locations semantically: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to score locations: {str(e)}") from e
+
+
+@app.get("/api/semantic-scoring/single")
+async def score_single_location(
+    lat: float,
+    lon: float,
+    property_names: list[str] = ["forests", "rivers", "lakes"],
+    ensure_loaded_radius: float = 2.0
+):
+    """Score a single location based on proximity to semantic features."""
+    try:
+        # Ensure features are loaded for the area
+        get_overlay_manager().ensure_features_loaded_for_area(lat, lon, ensure_loaded_radius)
+        
+        # Score the location
+        scores = get_overlay_manager().score_location_semantics(lat, lon, property_names)
+        
+        return {
+            "success": True,
+            "location": {"lat": lat, "lon": lon},
+            "scores": scores,
+            "metadata": {
+                "properties_scored": property_names,
+                "semantic_properties_info": get_overlay_manager().get_semantic_property_info()
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to score location semantically: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to score location: {str(e)}") from e
+
+
+@app.get("/api/semantic-properties")
+async def get_semantic_properties():
+    """Get information about available semantic properties and their configurations."""
+    try:
+        properties_info = get_overlay_manager().get_semantic_property_info()
+        
+        return {
+            "success": True,
+            "properties": properties_info,
+            "available_properties": list(properties_info.keys()),
+            "total_properties": len(properties_info)
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to get semantic properties info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get properties info: {str(e)}") from e
+
+
+@app.post("/api/semantic-properties/{property_name}/update")
+async def update_semantic_property(property_name: str, updates: dict):
+    """Update configuration for a semantic property."""
+    try:
+        get_overlay_manager().update_semantic_property(property_name, **updates)
+        
+        return {
+            "success": True,
+            "message": f"Updated property {property_name}",
+            "updated_property": get_overlay_manager().get_semantic_property_info().get(property_name)
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to update semantic property {property_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update property: {str(e)}") from e
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    cache_stats = route_builder.get_cache_statistics()
+    cache_stats = get_route_builder().get_cache_statistics()
 
     return {
         "status": "healthy",
@@ -498,12 +787,15 @@ async def health_check():
             "Export final route"
         ],
         "performance": {
-            "active_client_sessions": len(route_builder.client_sessions),
-            "legacy_cache_graphs": len(route_builder.graph_cache),
-            "persistent_cache_graphs": cache_stats["persistent_cache"]["total_graphs"],
-            "memory_cached_graphs": cache_stats["memory_cache"]["memory_cached_graphs"],
-            "cache_size_mb": cache_stats["persistent_cache"]["total_size_mb"],
-            "semantic_overlay_cache": overlay_manager.get_cache_stats()
+            "active_client_sessions": len(get_route_builder().client_sessions),
+            "legacy_cache_graphs": len(get_route_builder().graph_cache),
+            "spatial_tiles": cache_stats.get("persistent_cache", {}).get("spatial_tile_storage", {}).get("tile_count", 0),
+            "total_nodes": cache_stats.get("persistent_cache", {}).get("spatial_tile_storage", {}).get("total_nodes", 0),
+            "total_edges": cache_stats.get("persistent_cache", {}).get("spatial_tile_storage", {}).get("total_edges", 0),
+            "memory_cached_graphs": cache_stats.get("persistent_cache", {}).get("memory_cache", {}).get("memory_cached_graphs", 0),
+            "cache_size_mb": (cache_stats.get("persistent_cache", {}).get("spatial_tile_storage", {}).get("total_size", 0) or 0) / (1024 * 1024),
+            "coverage_km2": cache_stats.get("persistent_cache", {}).get("total_coverage_estimate", {}).get("estimated_area_km2", 0),
+            "semantic_overlay_cache": get_overlay_manager().get_cache_stats()
         }
     }
 

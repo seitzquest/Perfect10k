@@ -259,15 +259,13 @@ class Perfect10kApp {
      */
     async startInteractiveRouting() {
         try {
-            this.showLoading('Loading area map...');
-            
+            // Don't show basic loading - let the new loading animation handle it
             const locationInput = document.getElementById('locationInput').value.trim();
             
             if (locationInput) {
                 // Parse and use specified location
                 const location = await this.parseLocation(locationInput);
                 if (!location) {
-                    this.hideLoading();
                     this.showMessage('Invalid location format', 'error');
                     return;
                 }
@@ -281,14 +279,12 @@ class Perfect10kApp {
                         this.mapEditor.userLocation.lon
                     );
                 } else {
-                    this.hideLoading();
                     // Do nothing - user needs to set a location first
                     return;
                 }
             }
             
         } catch (error) {
-            this.hideLoading();
             console.error('Interactive routing failed:', error);
             this.showMessage(`Routing failed: ${error.message}`, 'error');
         }

@@ -25,7 +25,7 @@ class ApiClient {
     }
     
     /**
-     * Start a new interactive routing session
+     * Start a new interactive routing session with loading animation (async version)
      */
     async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
         const requestData = {
@@ -36,18 +36,36 @@ class ApiClient {
         };
         
         try {
-            const response = await this.makeRequest('/api/start-session', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            });
-            
-            // Store session ID
-            this.currentSession = response.session_id;
-            
-            return response;
+            // Use async job approach with loading manager
+            if (window.loadingManager) {
+                const jobResponse = await this.makeRequest('/api/start-session-async', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                // Start loading animation and poll for results
+                window.loadingManager.showLoading({
+                    title: "Finding Perfect Route",
+                    description: `Analyzing natural features for ${preference} routes...`
+                });
+                
+                const response = await this.pollJobUntilComplete(jobResponse.job_id);
+                
+                // Store session ID from completed job (check both possible field names)
+                this.currentSession = response.session_id || response.client_id;
+                
+                // Log performance info for debugging
+                console.log('Async route generation completed:', response);
+                console.log('Current session set to:', this.currentSession);
+                
+                return response;
+            } else {
+                // Fallback to synchronous version if loading manager not available
+                return this.startSessionSync(lat, lon, preference, targetDistance);
+            }
             
         } catch (error) {
             console.error('Session start failed:', error);
@@ -56,12 +74,141 @@ class ApiClient {
     }
     
     /**
+     * Start a new interactive routing session synchronously (legacy/fallback)
+     */
+    async startSessionSync(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
+        const requestData = {
+            lat: lat,
+            lon: lon,
+            preference: preference,
+            target_distance: targetDistance
+        };
+        
+        try {
+            // Use loading manager if available
+            if (window.loadingManager) {
+                const response = await window.loadingManager.makeApiRequestWithLoading(
+                    `${this.baseUrl}/api/start-session`, 
+                    {
+                        method: 'POST',
+                        body: requestData,
+                        loadingOptions: {
+                            title: "Finding Perfect Route",
+                            description: `Analyzing natural features for ${preference} routes...`
+                        }
+                    }
+                );
+                
+                // Store session ID
+                this.currentSession = response.session_id;
+                
+                // Log performance info for debugging
+                if (response.performance) {
+                    console.log('Route generation performance:', response.performance);
+                }
+                
+                return response;
+            } else {
+                // Fallback to regular request if loading manager not available
+                const response = await this.makeRequest('/api/start-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                // Store session ID
+                this.currentSession = response.session_id;
+                
+                return response;
+            }
+            
+        } catch (error) {
+            console.error('Session start failed:', error);
+            throw new Error(`Session start failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Poll job status until completion
+     */
+    async pollJobUntilComplete(jobId) {
+        const maxAttempts = 120; // 2 minutes max (120 * 1 second)
+        let attempts = 0;
+        
+        // Show async job progress if loading manager available
+        if (window.loadingManager) {
+            window.loadingManager.showAsyncJobProgress(jobId);
+        }
+        
+        while (attempts < maxAttempts) {
+            try {
+                const status = await this.getJobStatus(jobId);
+                
+                // Update loading progress with job status
+                if (window.loadingManager) {
+                    window.loadingManager.updateJobProgress(status);
+                }
+                
+                if (status.status === 'completed') {
+                    window.loadingManager?.hideLoading();
+                    window.loadingManager?.removeBackgroundNotification();
+                    return status.result;
+                } else if (status.status === 'failed') {
+                    window.loadingManager?.hideLoading();
+                    window.loadingManager?.removeBackgroundNotification();
+                    throw new Error(status.error || 'Job failed');
+                }
+                
+                // Still running, wait and poll again
+                await this.delay(1000);
+                attempts++;
+                
+            } catch (error) {
+                console.error('Job polling error:', error);
+                // Update loading with error status but continue trying
+                if (window.loadingManager) {
+                    window.loadingManager.updateJobProgress({
+                        status: 'running',
+                        current_phase: 'Retrying connection...',
+                        progress: Math.min(90, (attempts / maxAttempts) * 100)
+                    });
+                }
+                await this.delay(2000);
+                attempts++;
+            }
+        }
+        
+        // Timeout
+        window.loadingManager?.hideLoading();
+        window.loadingManager?.removeBackgroundNotification();
+        throw new Error('Job timed out after 2 minutes');
+    }
+    
+    /**
+     * Get job status
+     */
+    async getJobStatus(jobId) {
+        try {
+            const response = await this.makeRequest(`/api/job-status/${jobId}`);
+            return response;
+        } catch (error) {
+            console.error('Get job status failed:', error);
+            throw new Error(`Get job status failed: ${error.message}`);
+        }
+    }
+    
+    /**
      * Add a waypoint to the current route
      */
     async addWaypoint(nodeId) {
         if (!this.currentSession) {
-            throw new Error('No active session');
+            console.error('No active session found. Current session:', this.currentSession);
+            throw new Error('No active session - please start a route first');
         }
+        
+        console.log('Adding waypoint with session:', this.currentSession);
         
         const requestData = {
             session_id: this.currentSession,
@@ -130,6 +277,42 @@ class ApiClient {
         } catch (error) {
             console.error('Get route status failed:', error);
             throw new Error(`Get route status failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Clear semantic candidate cache to get fresh probabilistic results
+     */
+    async clearSemanticCache() {
+        try {
+            // Use loading manager if available for visual feedback
+            if (window.loadingManager) {
+                const response = await window.loadingManager.makeApiRequestWithLoading(
+                    `${this.baseUrl}/api/clear-semantic-cache`, 
+                    {
+                        method: 'POST',
+                        loadingOptions: {
+                            title: "Refreshing Candidate Cache",
+                            description: "Clearing cached data for fresh route variations...",
+                            showDetails: false
+                        }
+                    }
+                );
+                return response;
+            } else {
+                // Fallback without loading animation
+                const response = await this.makeRequest('/api/clear-semantic-cache', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                return response;
+            }
+            
+        } catch (error) {
+            console.error('Clear semantic cache failed:', error);
+            throw new Error(`Clear semantic cache failed: ${error.message}`);
         }
     }
     
@@ -394,6 +577,85 @@ class ApiClient {
         } catch (error) {
             console.error('Clear semantic overlay cache failed:', error);
             throw new Error(`Clear semantic overlay cache failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Score multiple locations based on semantic feature proximity
+     */
+    async scoreLocationsSemantics(locations, propertyNames = ["forests", "rivers", "lakes"], ensureLoadedRadius = 2.0) {
+        const requestData = {
+            locations: locations,
+            property_names: propertyNames,
+            ensure_loaded_radius: ensureLoadedRadius
+        };
+        
+        try {
+            const response = await this.makeRequest('/api/semantic-scoring', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Score locations semantics failed:', error);
+            throw new Error(`Score locations semantics failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Score a single location based on semantic feature proximity
+     */
+    async scoreSingleLocationSemantics(lat, lon, propertyNames = ["forests", "rivers", "lakes"], ensureLoadedRadius = 2.0) {
+        try {
+            const response = await this.makeRequest(
+                `/api/semantic-scoring/single?lat=${lat}&lon=${lon}&property_names=${propertyNames.join(',')}&ensure_loaded_radius=${ensureLoadedRadius}`
+            );
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Score single location semantics failed:', error);
+            throw new Error(`Score single location semantics failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Get semantic properties information
+     */
+    async getSemanticProperties() {
+        try {
+            const response = await this.makeRequest('/api/semantic-properties');
+            return response;
+            
+        } catch (error) {
+            console.error('Get semantic properties failed:', error);
+            throw new Error(`Get semantic properties failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Update semantic property configuration
+     */
+    async updateSemanticProperty(propertyName, updates) {
+        try {
+            const response = await this.makeRequest(`/api/semantic-properties/${propertyName}/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updates)
+            });
+            
+            return response;
+            
+        } catch (error) {
+            console.error(`Update semantic property ${propertyName} failed:`, error);
+            throw new Error(`Update semantic property failed: ${error.message}`);
         }
     }
     

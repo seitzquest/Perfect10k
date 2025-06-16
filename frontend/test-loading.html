@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading Animation Test</title>
+    <script src="js/loading-animation.js"></script>
+</head>
+<body>
+    <h1>Loading Animation Test</h1>
+    <button onclick="testLoading()">Test Loading Animation</button>
+    <button onclick="testApiIntegration()">Test API Integration</button>
+    
+    <script>
+        function testLoading() {
+            // Test the loading animation directly
+            window.loadingManager.showLoading({
+                title: "Testing Animation",
+                description: "This is a test of the loading system..."
+            });
+            
+            // Simulate phases
+            setTimeout(() => {
+                window.loadingManager.updateProgress([
+                    {
+                        phase: "graph_loading",
+                        description: "Loading street network",
+                        duration_ms: 500,
+                        completed: true
+                    }
+                ]);
+            }, 1000);
+            
+            setTimeout(() => {
+                window.loadingManager.updateProgress([
+                    {
+                        phase: "graph_loading",
+                        description: "Loading street network", 
+                        duration_ms: 500,
+                        completed: true
+                    },
+                    {
+                        phase: "route_initialization",
+                        description: "Initializing route parameters",
+                        duration_ms: 100,
+                        completed: true
+                    }
+                ]);
+            }, 2000);
+            
+            setTimeout(() => {
+                window.loadingManager.updateProgress([
+                    {
+                        phase: "graph_loading",
+                        description: "Loading street network",
+                        duration_ms: 500,
+                        completed: true
+                    },
+                    {
+                        phase: "route_initialization", 
+                        description: "Initializing route parameters",
+                        duration_ms: 100,
+                        completed: true
+                    },
+                    {
+                        phase: "semantic_analysis",
+                        description: "Analyzing natural features",
+                        duration_ms: 2500,
+                        completed: true,
+                        was_cached: false
+                    }
+                ], 3100);
+            }, 3000);
+            
+            setTimeout(() => {
+                window.loadingManager.hideLoading();
+            }, 4000);
+        }
+        
+        function testApiIntegration() {
+            // Test the API integration
+            window.loadingManager.makeApiRequestWithLoading('/api/start-session', {
+                method: 'POST',
+                body: {
+                    lat: 37.7749,
+                    lon: -122.4194,
+                    preference: "scenic nature",
+                    target_distance: 8000
+                },
+                loadingOptions: {
+                    title: "API Integration Test",
+                    description: "Testing real API call with loading animation..."
+                }
+            }).then(result => {
+                console.log('API test result:', result);
+                alert('API test completed! Check console for details.');
+            }).catch(error => {
+                console.error('API test failed:', error);
+                alert('API test failed: ' + error.message);
+            });
+        }
+    </script>
+</body>
+</html>

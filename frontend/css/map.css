@@ -705,20 +705,130 @@
 
 /* Candidate Popup Styles */
 .candidate-popup {
-    min-width: 200px;
-    text-align: center;
+    min-width: 280px;
+    max-width: 350px;
+    text-align: left;
 }
 
 .candidate-popup h4 {
-    margin: 0 0 8px 0;
+    margin: 0 0 12px 0;
     color: var(--gray-800);
-    font-size: 1rem;
+    font-size: 1.1rem;
+    text-align: center;
+    font-weight: 600;
 }
 
 .candidate-popup p {
-    margin: 4px 0;
+    margin: 6px 0;
     font-size: 0.875rem;
     color: var(--gray-600);
+}
+
+.semantic-scores {
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 1px solid var(--gray-200);
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.semantic-scores p {
+    margin: 4px 0;
+    font-size: 0.85rem;
+}
+
+.semantic-summary {
+    font-weight: 500;
+    color: var(--gray-700);
+    margin-top: 8px;
+}
+
+.semantic-details {
+    font-size: 0.8rem;
+    color: var(--gray-600);
+    font-style: italic;
+    margin-top: 4px;
+}
+
+.score-breakdown {
+    margin: 8px 0;
+}
+
+.score-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    font-size: 0.8rem;
+}
+
+.score-item.overall-score {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.score-icon {
+    width: 16px;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.score-label {
+    min-width: 80px;
+    font-size: 0.75rem;
+    color: var(--gray-700);
+}
+
+.score-bar {
+    flex: 1;
+    height: 16px;
+    background: var(--gray-100);
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+}
+
+.score-fill {
+    height: 100%;
+    border-radius: 7px;
+    transition: width 0.3s ease;
+    opacity: 0.8;
+}
+
+.score-fill.score-high {
+    opacity: 0.9;
+}
+
+.score-fill.score-medium {
+    opacity: 0.7;
+}
+
+.score-fill.score-low {
+    opacity: 0.6;
+}
+
+.score-fill.score-none {
+    opacity: 0.3;
+}
+
+.score-text {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    text-shadow: 0 1px 1px rgba(255, 255, 255, 0.8);
+}
+
+.no-scores {
+    font-size: 0.8rem;
+    color: var(--gray-500);
+    font-style: italic;
+    text-align: center;
+    margin: 8px 0;
 }
 
 .candidate-actions {
@@ -729,12 +839,13 @@
 
 .candidate-actions .btn {
     flex: 1;
-    padding: 6px 12px;
+    padding: 8px 12px;
     font-size: 0.8rem;
     border-radius: 6px;
     border: none;
     cursor: pointer;
     transition: all 0.2s ease;
+    font-weight: 500;
 }
 
 .candidate-actions .btn-primary {
