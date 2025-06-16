@@ -4,9 +4,10 @@ Client-session based approach with graph caching for fast performance.
 """
 
 import math
+import random
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Set, List
 
 from loguru import logger
 
@@ -223,20 +224,66 @@ class InteractiveRouteBuilder:
             return self._generate_candidates_regular(session, from_node)
     
     def _generate_candidates_fast(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
-        """Generate candidates using ultra-fast optimized generator."""
+        """Generate candidates using ultra-fast optimized generator with enhanced probabilistic features."""
         route = session.active_route
         
-        # Ensure fast semantic scores are precomputed for this area
-        if not hasattr(session, 'fast_cache_key') or not session.fast_cache_key:
-            logger.info("Fast precomputing semantic scores for session area")
-            session.fast_cache_key = self.fast_candidate_generator.precompute_area_scores_fast(
+        # Configure probabilistic mode for variety
+        if hasattr(self.fast_candidate_generator, 'set_probabilistic_mode'):
+            # Higher exploration factor for more variety in candidate selection
+            exploration_factor = 0.4  # Increased from default 0.3 for more diversity
+            self.fast_candidate_generator.set_probabilistic_mode(
+                enabled=True, 
+                exploration_factor=exploration_factor,
+                diversity_enforcement=True
+            )
+        
+        # Ensure fast semantic scores are precomputed for current waypoint area
+        from_lat = session.graph.nodes[from_node]["y"]
+        from_lon = session.graph.nodes[from_node]["x"]
+        
+        # Create dynamic cache key based on current waypoint location
+        # Add randomization when probabilistic mode is enabled to prevent deterministic caching
+        base_cache_key = f"waypoint_{from_lat:.4f}_{from_lon:.4f}_{route.preference}"
+        
+        # Check if fast generator is in probabilistic mode
+        probabilistic_mode = getattr(self.fast_candidate_generator, 'probabilistic_mode', False) if self.fast_candidate_generator else False
+        
+        if probabilistic_mode:
+            # Add random suffix to cache key to enable probabilistic variety
+            import random
+            cache_variant = random.randint(1, 12)  # 12 variants for good diversity
+            waypoint_cache_key = f"{base_cache_key}_prob{cache_variant}"
+            logger.info(f"Probabilistic mode: using cache variant {cache_variant} for waypoint")
+        else:
+            waypoint_cache_key = base_cache_key
+        
+        # Check if we have precomputed scores for this waypoint area
+        if not hasattr(session, 'waypoint_cache_keys'):
+            session.waypoint_cache_keys = {}
+            
+        if waypoint_cache_key not in session.waypoint_cache_keys:
+            # Limit cache size to prevent memory issues (keep last 5 waypoint areas)
+            if len(session.waypoint_cache_keys) >= 5:
+                # Remove oldest cache entry
+                oldest_key = next(iter(session.waypoint_cache_keys))
+                logger.debug(f"Removing old waypoint cache: {oldest_key}")
+                del session.waypoint_cache_keys[oldest_key]
+            logger.info(f"Fast precomputing semantic scores for waypoint area at ({from_lat:.4f}, {from_lon:.4f})")
+            
+            # Precompute around current waypoint with reasonable radius
+            precompute_radius = min(session.graph_radius, 4000)  # Max 4km radius for efficiency
+            
+            session.waypoint_cache_keys[waypoint_cache_key] = self.fast_candidate_generator.precompute_area_scores_fast(
                 session.graph, 
-                session.graph_center[0], 
-                session.graph_center[1],
-                session.graph_radius,
+                from_lat,  # Use current waypoint location
+                from_lon,  # Use current waypoint location
+                precompute_radius,
                 route.preference,
                 max_nodes=1000  # Limit nodes for speed
             )
+        
+        # Use the cache key for current waypoint
+        current_cache_key = session.waypoint_cache_keys[waypoint_cache_key]
 
         # Calculate target radius based on remaining distance
         remaining_distance = route.target_distance - route.total_distance
@@ -244,10 +291,7 @@ class InteractiveRouteBuilder:
         target_radius = slack_factor * remaining_distance / (2 * math.pi)
         target_radius = max(200, min(target_radius, 2000))
 
-        from_lat = session.graph.nodes[from_node]["y"]
-        from_lon = session.graph.nodes[from_node]["x"]
-
-        logger.info(f"Ultra-fast candidate generation from node {from_node} with radius {target_radius:.0f}m")
+        logger.info(f"Ultra-fast candidate generation from node {from_node} ({from_lat:.4f}, {from_lon:.4f}) with radius {target_radius:.0f}m")
 
         # Get candidates using ultra-fast generator
         exclude_nodes = set(route.current_waypoints)
@@ -258,7 +302,7 @@ class InteractiveRouteBuilder:
                 exclude_nodes.add(node)
 
         fast_candidates = self.fast_candidate_generator.generate_candidates_ultra_fast(
-            session.fast_cache_key,
+            current_cache_key,  # Use waypoint-specific cache key
             from_lat,
             from_lon, 
             target_radius,
@@ -266,6 +310,13 @@ class InteractiveRouteBuilder:
             min_score=0.15,  # Slightly lower threshold for more options
             max_candidates=3
         )
+        
+        # Ensure we have exactly 3 candidates with additional fallback if needed
+        if len(fast_candidates) < 3:
+            logger.warning(f"Fast generator returned only {len(fast_candidates)} candidates, applying emergency fallback")
+            fast_candidates = self._emergency_candidate_fallback(
+                session, from_node, from_lat, from_lon, target_radius, exclude_nodes, fast_candidates
+            )
 
         # Convert to RouteCandidate format
         candidates = []
@@ -306,8 +357,16 @@ class InteractiveRouteBuilder:
         route = session.active_route
 
         # Ensure semantic scores are precomputed for this area
-        if not session.semantic_cache_key:
-            logger.info("Precomputing semantic scores for session area (regular)")
+        # Check if semantic candidate generator is in probabilistic mode
+        probabilistic_mode = getattr(self.semantic_candidate_generator, 'probabilistic_mode', False) if self.semantic_candidate_generator else False
+        
+        if not session.semantic_cache_key or (probabilistic_mode and random.random() < 0.3):
+            # In probabilistic mode, occasionally force recomputation for variety (30% chance)
+            if probabilistic_mode and session.semantic_cache_key:
+                logger.info("Probabilistic mode: forcing semantic recomputation for variety")
+            else:
+                logger.info("Precomputing semantic scores for session area (regular)")
+            
             session.semantic_cache_key = self.semantic_candidate_generator.precompute_area_scores(
                 session.graph, 
                 session.graph_center[0], 
@@ -1000,6 +1059,107 @@ class InteractiveRouteBuilder:
         except Exception as e:
             logger.error(f"Failed to load map data: {str(e)}")
             raise
+
+    def _emergency_candidate_fallback(self, session: ClientSession, from_node: int, 
+                                     from_lat: float, from_lon: float, target_radius: float,
+                                     exclude_nodes: Set[int], existing_candidates: List) -> List:
+        """
+        Emergency fallback to ensure we always have 3 candidates.
+        This method uses progressively more relaxed criteria to find candidates.
+        """
+        logger.warning(f"Emergency fallback: need 3 candidates but only have {len(existing_candidates)}")
+        
+        # Start with existing candidates
+        result = existing_candidates.copy()
+        used_nodes = {getattr(c, 'node_id', None) for c in result}
+        used_nodes.discard(None)
+        
+        # Strategy 1: Expand radius progressively  
+        radius_multipliers = [2.0, 3.0, 5.0, 10.0]
+        
+        for multiplier in radius_multipliers:
+            if len(result) >= 3:
+                break
+                
+            expanded_radius = target_radius * multiplier
+            logger.debug(f"Emergency fallback: trying {multiplier}x radius ({expanded_radius:.0f}m)")
+            
+            # Find all nodes within expanded radius
+            for node in session.graph.nodes():
+                if len(result) >= 3:
+                    break
+                    
+                if node in exclude_nodes or node in used_nodes:
+                    continue
+                
+                node_data = session.graph.nodes[node]
+                node_lat, node_lon = node_data['y'], node_data['x']
+                
+                distance = self._haversine_distance(from_lat, from_lon, node_lat, node_lon)
+                if distance <= expanded_radius:
+                    # Create basic candidate
+                    try:
+                        import osmnx as ox
+                        route_candidate = RouteCandidate(
+                            node_id=node,
+                            lat=node_lat,
+                            lon=node_lon,
+                            value_score=0.3,  # Basic score
+                            distance_from_current=distance,
+                            estimated_route_completion=0.0,
+                            explanation="Emergency fallback candidate",
+                            semantic_scores={'basic': 0.3},
+                            semantic_details="Generated via emergency fallback system"
+                        )
+                        result.append(route_candidate)
+                        used_nodes.add(node)
+                    except Exception as e:
+                        logger.debug(f"Failed to create emergency candidate for node {node}: {e}")
+                        continue
+        
+        # Strategy 2: If still not enough, use any remaining nodes (no distance limit)
+        if len(result) < 3:
+            logger.debug("Final emergency fallback: using any available nodes")
+            
+            all_nodes = list(session.graph.nodes())
+            # Sort by distance from current position
+            node_distances = []
+            for node in all_nodes:
+                if node in exclude_nodes or node in used_nodes:
+                    continue
+                    
+                node_data = session.graph.nodes[node]
+                node_lat, node_lon = node_data['y'], node_data['x']
+                distance = self._haversine_distance(from_lat, from_lon, node_lat, node_lon)
+                node_distances.append((node, distance, node_lat, node_lon))
+            
+            # Sort by distance and take the closest remaining nodes
+            node_distances.sort(key=lambda x: x[1])
+            
+            for node, distance, node_lat, node_lon in node_distances:
+                if len(result) >= 3:
+                    break
+                    
+                try:
+                    route_candidate = RouteCandidate(
+                        node_id=node,
+                        lat=node_lat,
+                        lon=node_lon,
+                        value_score=0.2,  # Lower score for emergency candidates
+                        distance_from_current=distance,
+                        estimated_route_completion=0.0,
+                        explanation="Final emergency fallback candidate",
+                        semantic_scores={'emergency': 0.2},
+                        semantic_details="Generated via final emergency fallback"
+                    )
+                    result.append(route_candidate)
+                    used_nodes.add(node)
+                except Exception as e:
+                    logger.debug(f"Failed to create final emergency candidate for node {node}: {e}")
+                    continue
+        
+        logger.info(f"Emergency fallback completed: {len(result)} candidates (target: 3)")
+        return result
 
     def get_cache_statistics(self) -> dict:
         """Get comprehensive cache statistics."""

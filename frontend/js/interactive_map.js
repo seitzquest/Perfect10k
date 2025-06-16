@@ -240,7 +240,15 @@ class InteractiveMapEditor {
      */
     async addWaypoint(nodeId) {
         try {
-            // Show loading indicator
+            // Immediately close all popups for instant feedback
+            this.map.closePopup();
+            
+            // Show loading animation immediately
+            if (window.loadingManager) {
+                window.loadingManager.showMinimalisticLoading();
+            }
+            
+            // Also show basic loading indicator
             if (window.perfect10kApp) {
                 window.perfect10kApp.showLoading();
             }
@@ -280,7 +288,10 @@ class InteractiveMapEditor {
             console.error('Failed to add waypoint:', error);
             this.showMessage(`Failed to add waypoint: ${error.message}`, 'error');
         } finally {
-            // Hide loading indicator
+            // Hide all loading indicators
+            if (window.loadingManager) {
+                window.loadingManager.hideLoading();
+            }
             if (window.perfect10kApp) {
                 window.perfect10kApp.hideLoading();
             }
@@ -292,7 +303,15 @@ class InteractiveMapEditor {
      */
     async finalizeRoute(nodeId) {
         try {
-            // Show loading indicator
+            // Immediately close all popups for instant feedback
+            this.map.closePopup();
+            
+            // Show loading animation immediately
+            if (window.loadingManager) {
+                window.loadingManager.showMinimalisticLoading();
+            }
+            
+            // Also show basic loading indicator
             if (window.perfect10kApp) {
                 window.perfect10kApp.showLoading();
             }
@@ -332,7 +351,10 @@ class InteractiveMapEditor {
             console.error('Failed to finalize route:', error);
             this.showMessage(`Failed to finalize route: ${error.message}`, 'error');
         } finally {
-            // Hide loading indicator
+            // Hide all loading indicators
+            if (window.loadingManager) {
+                window.loadingManager.hideLoading();
+            }
             if (window.perfect10kApp) {
                 window.perfect10kApp.hideLoading();
             }

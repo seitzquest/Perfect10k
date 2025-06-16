@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading Animation Test</title>
+</head>
+<body>
+    <button onclick="testLoadingManager()">Test Loading Manager</button>
+    <button onclick="testMinimalisticLoading()">Test Minimalistic Loading</button>
+    <button onclick="testHideLoading()">Hide Loading</button>
+    
+    <div id="status"></div>
+
+    <script src="frontend/js/loading-animation.js"></script>
+    <script>
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML += '<br>' + message;
+            console.log(message);
+        }
+
+        function testLoadingManager() {
+            updateStatus('Testing loadingManager existence...');
+            if (typeof window.loadingManager !== 'undefined') {
+                updateStatus('✅ window.loadingManager exists');
+                updateStatus('LoadingManager type: ' + typeof window.loadingManager);
+                updateStatus('LoadingManager constructor: ' + window.loadingManager.constructor.name);
+                
+                // Test methods
+                if (typeof window.loadingManager.showMinimalisticLoading === 'function') {
+                    updateStatus('✅ showMinimalisticLoading method exists');
+                } else {
+                    updateStatus('❌ showMinimalisticLoading method missing');
+                }
+                
+                if (typeof window.loadingManager.hideLoading === 'function') {
+                    updateStatus('✅ hideLoading method exists');
+                } else {
+                    updateStatus('❌ hideLoading method missing');
+                }
+            } else {
+                updateStatus('❌ window.loadingManager does not exist');
+            }
+        }
+
+        function testMinimalisticLoading() {
+            updateStatus('Testing showMinimalisticLoading...');
+            if (window.loadingManager && typeof window.loadingManager.showMinimalisticLoading === 'function') {
+                try {
+                    window.loadingManager.showMinimalisticLoading();
+                    updateStatus('✅ showMinimalisticLoading called successfully');
+                } catch (error) {
+                    updateStatus('❌ showMinimalisticLoading error: ' + error.message);
+                }
+            } else {
+                updateStatus('❌ showMinimalisticLoading not available');
+            }
+        }
+
+        function testHideLoading() {
+            updateStatus('Testing hideLoading...');
+            if (window.loadingManager && typeof window.loadingManager.hideLoading === 'function') {
+                try {
+                    window.loadingManager.hideLoading();
+                    updateStatus('✅ hideLoading called successfully');
+                } catch (error) {
+                    updateStatus('❌ hideLoading error: ' + error.message);
+                }
+            } else {
+                updateStatus('❌ hideLoading not available');
+            }
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', function() {
+            setTimeout(testLoadingManager, 100);
+        });
+    </script>
+</body>
+</html>

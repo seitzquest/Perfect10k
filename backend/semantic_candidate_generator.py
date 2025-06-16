@@ -38,6 +38,11 @@ class SemanticCandidateGenerator:
         self.node_cache: Dict[str, List[PrecomputedSemanticNode]] = {}
         self.cache_bounds: Dict[str, Tuple[float, float, float, float]] = {}  # (min_lat, min_lon, max_lat, max_lon)
         
+        # Probabilistic generation parameters
+        self.probabilistic_mode = True  # Enable probabilistic selection
+        self.exploration_factor = 0.3  # How much randomness to inject (0.0 = deterministic, 1.0 = random)
+        self.diversity_enforcement = True  # Enforce spatial diversity in selection
+        
     def precompute_area_scores(self, graph: nx.MultiGraph, center_lat: float, center_lon: float, 
                               radius_m: float = 8000, preference: str = "scenic nature") -> str:
         """
@@ -256,9 +261,15 @@ class SemanticCandidateGenerator:
         else:
             normalized_scores = [1.0] * len(scores)
         
-        # Apply exponential weighting (higher scores get higher probability but allow variety)
-        # Using exponential with base 1.5 to favor top candidates while still allowing randomness
-        weights = [math.exp(1.5 * score) for score in normalized_scores]
+        # Apply exponential weighting with exploration factor
+        # Higher exploration_factor = more randomness, lower = more deterministic
+        if self.probabilistic_mode:
+            # Mix score-based and random weighting based on exploration factor
+            temperature = 1.5 * (1.0 - self.exploration_factor) + 0.3 * self.exploration_factor
+            weights = [math.exp(temperature * score) + random.uniform(0, self.exploration_factor) for score in normalized_scores]
+        else:
+            # Pure score-based selection
+            weights = [math.exp(2.0 * score) for score in normalized_scores]
         
         # Normalize weights to probabilities
         total_weight = sum(weights)
@@ -397,15 +408,18 @@ class SemanticCandidateGenerator:
     def _randomize_within_score_tiers(self, candidates: List[PrecomputedSemanticNode], 
                                      tier_size: int = 5) -> List[PrecomputedSemanticNode]:
         """
-        Randomize candidates within score tiers to add variability while maintaining quality bias.
+        Enhanced randomization within score tiers with probabilistic selection.
         
         Args:
             candidates: Sorted list of candidates
             tier_size: Size of each score tier to randomize within
             
         Returns:
-            Candidates with randomized order within score tiers
+            Candidates with enhanced randomization within score tiers
         """
+        if not self.probabilistic_mode:
+            return candidates  # Return deterministic order
+            
         if len(candidates) <= tier_size:
             randomized = candidates.copy()
             random.shuffle(randomized)
@@ -414,10 +428,49 @@ class SemanticCandidateGenerator:
         result = []
         for i in range(0, len(candidates), tier_size):
             tier = candidates[i:i + tier_size]
-            random.shuffle(tier)
+            
+            if self.exploration_factor > 0.5:
+                # High exploration: completely shuffle tier
+                random.shuffle(tier)
+            else:
+                # Medium exploration: probabilistic reordering within tier
+                tier_scores = [c.overall_score for c in tier]
+                if len(set(tier_scores)) > 1:  # If scores differ in tier
+                    # Add small random values to scores for reordering
+                    random_values = [random.uniform(0, self.exploration_factor * 0.1) for _ in tier]
+                    scored_tier = [(tier[j], tier_scores[j] + random_values[j]) for j in range(len(tier))]
+                    scored_tier.sort(key=lambda x: x[1], reverse=True)
+                    tier = [candidate for candidate, _ in scored_tier]
+                else:
+                    random.shuffle(tier)
+            
             result.extend(tier)
         
         return result
+    
+    def set_probabilistic_mode(self, enabled: bool, exploration_factor: float = 0.3, diversity_enforcement: bool = True):
+        """
+        Configure probabilistic generation parameters.
+        
+        Args:
+            enabled: Whether to enable probabilistic selection
+            exploration_factor: How much randomness to inject (0.0 = deterministic, 1.0 = random)
+            diversity_enforcement: Whether to enforce spatial diversity
+        """
+        self.probabilistic_mode = enabled
+        self.exploration_factor = max(0.0, min(1.0, exploration_factor))  # Clamp to 0-1
+        self.diversity_enforcement = diversity_enforcement
+        
+        logger.info(f"Probabilistic mode: {enabled}, exploration: {self.exploration_factor:.2f}, diversity: {diversity_enforcement}")
+    
+    def clear_cache(self):
+        """Clear all cached precomputed nodes to ensure fresh probabilistic results."""
+        cache_size = len(self.node_cache)
+        self.node_cache.clear()
+        self.cache_bounds.clear()
+        
+        if cache_size > 0:
+            logger.info(f"Cleared {cache_size} cached precomputed areas for fresh probabilistic generation")
     
     def _calculate_bearing(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate bearing in degrees from point 1 to point 2."""

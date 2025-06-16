@@ -435,6 +435,35 @@ async def get_cache_statistics():
         raise HTTPException(status_code=500, detail=f"Failed to get cache statistics: {str(e)}") from e
 
 
+@app.post("/api/clear-semantic-cache")
+async def clear_semantic_cache():
+    """Clear semantic candidate cache for fresh probabilistic results."""
+    try:
+        route_builder = get_route_builder()
+        
+        # Clear fast generator cache if available
+        if hasattr(route_builder, 'fast_candidate_generator') and route_builder.fast_candidate_generator:
+            if hasattr(route_builder.fast_candidate_generator, 'clear_cache'):
+                route_builder.fast_candidate_generator.clear_cache()
+        
+        # Clear regular generator cache if available  
+        if hasattr(route_builder, 'candidate_generator') and route_builder.candidate_generator:
+            if hasattr(route_builder.candidate_generator, 'clear_cache'):
+                route_builder.candidate_generator.clear_cache()
+        
+        logger.info("Cleared semantic candidate caches for fresh probabilistic generation")
+        
+        return {
+            "success": True,
+            "message": "Semantic candidate caches cleared successfully",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to clear semantic cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear semantic cache: {str(e)}") from e
+
+
 @app.get("/api/performance-stats")
 async def get_performance_statistics():
     """Get comprehensive performance statistics including fast generation metrics."""
@@ -442,12 +471,24 @@ async def get_performance_statistics():
         route_builder = get_route_builder()
         stats = {
             "cache_stats": route_builder.get_cache_statistics(),
-            "session_count": len(route_builder.client_sessions)
+            "session_count": len(route_builder.client_sessions),
+            "probabilistic_mode": False,
+            "exploration_factor": 0.0
         }
+        
+        # Add probabilistic generator stats if available
+        if hasattr(route_builder, 'fast_candidate_generator') and route_builder.fast_candidate_generator:
+            fast_gen = route_builder.fast_candidate_generator
+            if hasattr(fast_gen, 'probabilistic_mode'):
+                stats["probabilistic_mode"] = fast_gen.probabilistic_mode
+                stats["exploration_factor"] = fast_gen.exploration_factor
         
         # Add fast generator stats if available
         if hasattr(route_builder, 'fast_candidate_generator') and route_builder.fast_candidate_generator:
-            stats["fast_generator_stats"] = route_builder.fast_candidate_generator.get_performance_stats()
+            if hasattr(route_builder.fast_candidate_generator, 'get_performance_stats'):
+                stats["fast_generator_stats"] = route_builder.fast_candidate_generator.get_performance_stats()
+            if hasattr(route_builder.fast_candidate_generator, 'get_probabilistic_status'):
+                stats["fast_generator_probabilistic"] = route_builder.fast_candidate_generator.get_probabilistic_status()
         
         # Add regular generator stats if available  
         if hasattr(route_builder, 'semantic_candidate_generator') and route_builder.semantic_candidate_generator:

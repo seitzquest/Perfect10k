@@ -47,6 +47,15 @@ class FastCandidateGenerator:
         self.optimized_scorer = create_optimized_semantic_scorer()
         self.node_sampler = IntelligentNodeSampler()
         
+        # Probabilistic generation parameters
+        self.probabilistic_mode = True  # Enable probabilistic selection
+        self.exploration_factor = 0.3  # How much randomness to inject (0.0 = deterministic, 1.0 = random)
+        self.diversity_enforcement = True  # Enforce spatial diversity in selection
+        
+        # Angular diversity parameters
+        self.min_angular_separation = 90  # Minimum degrees between candidates (90° = good spread for 3)
+        self.distance_threshold = 500  # Minimum meters between candidates
+        
         # Caching
         self.precomputed_cache: Dict[str, Dict] = {}
         self.node_selection_cache: Dict[str, Tuple] = {}
@@ -60,6 +69,88 @@ class FastCandidateGenerator:
             'spatial_index_enabled': True
         }
     
+    def set_probabilistic_mode(self, enabled: bool, exploration_factor: float = 0.3, diversity_enforcement: bool = True):
+        """
+        Configure probabilistic generation parameters.
+        
+        Args:
+            enabled: Whether to enable probabilistic selection
+            exploration_factor: How much randomness to inject (0.0 = deterministic, 1.0 = random)
+            diversity_enforcement: Whether to enforce spatial diversity
+        """
+        self.probabilistic_mode = enabled
+        self.exploration_factor = max(0.0, min(1.0, exploration_factor))  # Clamp to 0-1
+        self.diversity_enforcement = diversity_enforcement
+        
+        logger.info(f"FastGenerator probabilistic mode: {enabled}, exploration: {self.exploration_factor:.2f}, diversity: {diversity_enforcement}")
+    
+    def set_diversity_parameters(self, min_angular_separation: float = 90, distance_threshold: float = 500):
+        """
+        Configure spatial and angular diversity parameters.
+        
+        Args:
+            min_angular_separation: Minimum degrees between candidates (90° good for 3 candidates)
+            distance_threshold: Minimum meters between candidates
+        """
+        self.min_angular_separation = max(30, min(180, min_angular_separation))  # Clamp 30-180 degrees
+        self.distance_threshold = max(100, distance_threshold)  # At least 100m
+        
+        logger.info(f"FastGenerator diversity: {self.min_angular_separation:.0f}° angular, {self.distance_threshold:.0f}m distance")
+    
+    def clear_cache(self):
+        """Clear all cached precomputed nodes to ensure fresh probabilistic results."""
+        cache_size = len(self.precomputed_cache)
+        self.precomputed_cache.clear()
+        self.node_selection_cache.clear()
+        
+        if cache_size > 0:
+            logger.info(f"Cleared {cache_size} cached fast precomputed areas for fresh probabilistic generation")
+    
+    def generate_candidates_ultra_fast_fresh(self, graph: nx.MultiGraph, center_lat: float, center_lon: float,
+                                           from_lat: float, from_lon: float, target_radius: float,
+                                           preference: str = "scenic nature", exclude_nodes: Set[int] = None,
+                                           min_score: float = 0.15, max_candidates: int = 5) -> List[FastSemanticCandidate]:
+        """
+        Generate fresh candidates without using cache (for maximum probabilistic variety).
+        """
+        # Temporarily disable cache and force fresh generation
+        original_cache = self.precomputed_cache.copy()
+        original_node_cache = self.node_selection_cache.copy()
+        
+        try:
+            # Clear caches to force fresh generation
+            self.precomputed_cache.clear()
+            self.node_selection_cache.clear()
+            
+            # Generate fresh candidates
+            cache_key = self.precompute_area_scores_fast(
+                graph, center_lat, center_lon, 
+                radius_m=8000, preference=preference, max_nodes=1000
+            )
+            
+            candidates = self.generate_candidates_ultra_fast(
+                cache_key, from_lat, from_lon, target_radius, 
+                exclude_nodes, min_score, max_candidates
+            )
+            
+            return candidates
+            
+        finally:
+            # Restore original caches (but keep the fresh generation for this session)
+            pass  # Leave fresh cache in place
+    
+    def get_probabilistic_status(self) -> Dict:
+        """Get current probabilistic configuration for debugging."""
+        return {
+            "probabilistic_mode": self.probabilistic_mode,
+            "exploration_factor": self.exploration_factor,
+            "diversity_enforcement": self.diversity_enforcement,
+            "min_angular_separation_degrees": self.min_angular_separation,
+            "distance_threshold_meters": self.distance_threshold,
+            "cache_size": len(self.precomputed_cache),
+            "node_cache_size": len(self.node_selection_cache)
+        }
+    
     def precompute_area_scores_fast(self, graph: nx.MultiGraph, center_lat: float, center_lon: float, 
                                    radius_m: float = 8000, preference: str = "scenic nature",
                                    max_nodes: int = 1000) -> str:
@@ -68,7 +159,13 @@ class FastCandidateGenerator:
         
         Target: Complete in 0.5-2 seconds instead of 10-30 seconds.
         """
-        cache_key = f"fast_{center_lat:.4f}_{center_lon:.4f}_{radius_m}_{hash(preference) % 10000}"
+        # Add randomization to cache key if probabilistic mode is enabled
+        cache_suffix = ""
+        if self.probabilistic_mode:
+            # Use a smaller random component to allow some cache reuse but still provide variety
+            cache_suffix = f"_{random.randint(1, 5)}"  # 5 different probabilistic variants
+        
+        cache_key = f"fast_{center_lat:.4f}_{center_lon:.4f}_{radius_m}_{hash(preference) % 10000}{cache_suffix}"
         
         if cache_key in self.precomputed_cache:
             logger.info(f"Using cached fast precomputation: {cache_key}")
@@ -172,23 +269,41 @@ class FastCandidateGenerator:
             candidates, from_lat, from_lon, max_candidates
         )
         
-        elapsed = time.time() - start_time
-        logger.debug(f"Ultra-fast generation: {len(diverse_candidates)} candidates in {elapsed*1000:.1f}ms")
+        # Phase 4: Guarantee minimum candidates with fallback system
+        final_candidates = self._ensure_minimum_candidates(
+            diverse_candidates, all_candidates, from_lat, from_lon, 
+            target_radius, exclude_nodes, min_score, max_candidates
+        )
         
-        return diverse_candidates[:max_candidates]
+        elapsed = time.time() - start_time
+        logger.debug(f"Ultra-fast generation: {len(final_candidates)} candidates in {elapsed*1000:.1f}ms")
+        
+        return final_candidates[:max_candidates]
     
     def _intelligent_node_selection(self, graph: nx.MultiGraph, center_lat: float, center_lon: float,
                                    radius_m: float, max_nodes: int) -> Tuple[List[Tuple[float, float]], List[int]]:
         """Intelligent node selection using multiple sampling strategies"""
-        cache_key = f"nodes_{center_lat:.4f}_{center_lon:.4f}_{radius_m}_{max_nodes}"
+        # Add randomization to cache key if probabilistic mode is enabled
+        cache_suffix = ""
+        if self.probabilistic_mode:
+            cache_suffix = f"_{random.randint(1, 3)}"  # 3 different node selection variants
+        
+        cache_key = f"nodes_{center_lat:.4f}_{center_lon:.4f}_{radius_m}_{max_nodes}{cache_suffix}"
         
         if cache_key in self.node_selection_cache:
             logger.debug(f"Using cached node selection: {cache_key}")
             return self.node_selection_cache[cache_key]
         
-        # Use intelligent sampler
+        # Use intelligent sampler with probabilistic strategy selection
+        if self.probabilistic_mode:
+            # Randomly vary the sampling strategy for diversity
+            strategies = ['hybrid', 'intersection_priority', 'spatial_stratified']
+            strategy = random.choice(strategies)
+        else:
+            strategy = 'hybrid'
+        
         locations, node_ids = self.node_sampler.sample_nodes_intelligently(
-            graph, center_lat, center_lon, radius_m, max_nodes, strategy='hybrid'
+            graph, center_lat, center_lon, radius_m, max_nodes, strategy=strategy
         )
         
         # Cache result
@@ -394,10 +509,433 @@ class FastCandidateGenerator:
     
     def _apply_fast_directional_diversity(self, candidates: List[FastSemanticCandidate],
                                         from_lat: float, from_lon: float, max_candidates: int) -> List[FastSemanticCandidate]:
-        """Fast directional diversity with minimal computation"""
+        """Fast directional diversity with probabilistic selection"""
         if len(candidates) <= max_candidates:
+            # Add randomization even for small candidate sets
+            if self.probabilistic_mode:
+                candidates_copy = candidates.copy()
+                random.shuffle(candidates_copy)
+                return candidates_copy
             return candidates
         
+        if self.probabilistic_mode:
+            return self._probabilistic_directional_selection(candidates, from_lat, from_lon, max_candidates)
+        else:
+            return self._deterministic_directional_selection(candidates, from_lat, from_lon, max_candidates)
+    
+    def _probabilistic_directional_selection(self, candidates: List[FastSemanticCandidate],
+                                           from_lat: float, from_lon: float, max_candidates: int) -> List[FastSemanticCandidate]:
+        """Probabilistic candidate selection with diversity enforcement"""
+        # Strategy 1: Score-weighted probabilistic selection (40%)
+        score_candidates = self._score_weighted_selection(candidates, max(1, int(max_candidates * 0.4)))
+        
+        # Strategy 2: Diversity-enforced selection (40%)
+        remaining = [c for c in candidates if c.node_id not in {sc.node_id for sc in score_candidates}]
+        diversity_candidates = self._diversity_enforced_selection(remaining, score_candidates, from_lat, from_lon, max(1, int(max_candidates * 0.4)))
+        
+        # Strategy 3: Pure exploration (20%)
+        remaining = [c for c in candidates if c.node_id not in {sc.node_id for sc in score_candidates + diversity_candidates}]
+        exploration_candidates = self._exploration_selection(remaining, max_candidates - len(score_candidates) - len(diversity_candidates))
+        
+        # Combine and apply final directional diversity check
+        all_selected = score_candidates + diversity_candidates + exploration_candidates
+        
+        # Final directional diversity enforcement
+        final_candidates = self._enforce_final_directional_spread(all_selected[:max_candidates], from_lat, from_lon, max_candidates)
+        
+        # Shuffle for randomness
+        random.shuffle(final_candidates)
+        
+        return final_candidates
+    
+    def _score_weighted_selection(self, candidates: List[FastSemanticCandidate], count: int) -> List[FastSemanticCandidate]:
+        """Score-weighted probabilistic selection"""
+        if len(candidates) <= count:
+            return candidates.copy()
+        
+        # Create weights with exploration factor
+        weights = []
+        for candidate in candidates:
+            # Base score weight
+            score_weight = math.exp(1.5 * candidate.overall_score)
+            # Add exploration randomness
+            exploration_bonus = random.uniform(0, self.exploration_factor)
+            weights.append(score_weight + exploration_bonus)
+        
+        # Normalize weights
+        total_weight = sum(weights)
+        if total_weight == 0:
+            return random.sample(candidates, count)
+        
+        probabilities = np.array(weights) / total_weight
+        selected_indices = np.random.choice(len(candidates), size=count, replace=False, p=probabilities)
+        
+        return [candidates[i] for i in selected_indices]
+    
+    def _diversity_enforced_selection(self, candidates: List[FastSemanticCandidate], 
+                                    already_selected: List[FastSemanticCandidate],
+                                    from_lat: float, from_lon: float, count: int) -> List[FastSemanticCandidate]:
+        """Selection with spatial and angular diversity enforcement"""
+        if len(candidates) <= count:
+            return candidates.copy()
+        
+        selected = []
+        remaining = candidates.copy()
+        
+        # Use configurable diversity thresholds
+        distance_threshold = self.distance_threshold
+        min_angle_separation = self.min_angular_separation
+        
+        for _ in range(count):
+            if not remaining:
+                break
+            
+            # Calculate diversity weights
+            weights = []
+            for candidate in remaining:
+                # Base score weight
+                score_weight = math.exp(0.8 * candidate.overall_score)
+                
+                # Distance and angular diversity bonus/penalty
+                diversity_weight = 1.0
+                for prev_candidate in already_selected + selected:
+                    # Distance-based diversity
+                    distance = haversine_cached(candidate.lat, candidate.lon, prev_candidate.lat, prev_candidate.lon)
+                    if distance < distance_threshold:
+                        diversity_weight *= 0.3  # Penalty for nearby candidates
+                    else:
+                        diversity_weight *= 1.1  # Small bonus for distant candidates
+                    
+                    # Angular diversity (from current position)
+                    candidate_bearing = self._calculate_bearing_fast(from_lat, from_lon, candidate.lat, candidate.lon)
+                    prev_bearing = self._calculate_bearing_fast(from_lat, from_lon, prev_candidate.lat, prev_candidate.lon)
+                    
+                    angle_diff = abs(candidate_bearing - prev_bearing)
+                    angle_diff = min(angle_diff, 360 - angle_diff)  # Handle wraparound
+                    
+                    if angle_diff < min_angle_separation:
+                        # Strong penalty for candidates in similar direction
+                        angle_penalty = 0.1 + 0.4 * (angle_diff / min_angle_separation)  # 0.1 to 0.5 penalty
+                        diversity_weight *= angle_penalty
+                    else:
+                        # Bonus for candidates in different directions
+                        angle_bonus = 1.0 + 0.3 * min(1.0, (angle_diff - min_angle_separation) / 60)
+                        diversity_weight *= angle_bonus
+                
+                # Add exploration randomness
+                exploration_bonus = random.uniform(0, self.exploration_factor * 0.5)
+                
+                weights.append(score_weight * diversity_weight + exploration_bonus)
+            
+            # Probabilistic selection with diversity bias
+            if sum(weights) > 0:
+                probabilities = np.array(weights) / sum(weights)
+                selected_idx = np.random.choice(len(remaining), p=probabilities)
+                selected.append(remaining.pop(selected_idx))
+            else:
+                selected.append(remaining.pop(random.randint(0, len(remaining) - 1)))
+        
+        return selected
+    
+    def _exploration_selection(self, candidates: List[FastSemanticCandidate], count: int) -> List[FastSemanticCandidate]:
+        """Pure exploration selection for discovering new areas"""
+        if len(candidates) <= count:
+            return candidates.copy()
+        
+        # Add random exploration scores
+        exploration_candidates = []
+        for candidate in candidates:
+            exploration_score = candidate.overall_score + random.uniform(0, self.exploration_factor * 0.5)
+            exploration_candidates.append((candidate, exploration_score))
+        
+        # Sort by exploration score and add randomness
+        exploration_candidates.sort(key=lambda x: x[1], reverse=True)
+        top_count = min(count * 3, len(exploration_candidates))
+        top_candidates = [candidate for candidate, _ in exploration_candidates[:top_count]]
+        
+        return random.sample(top_candidates, min(count, len(top_candidates)))
+    
+    def _enforce_final_directional_spread(self, candidates: List[FastSemanticCandidate], 
+                                        from_lat: float, from_lon: float, max_candidates: int) -> List[FastSemanticCandidate]:
+        """
+        Final enforcement of directional spread to ensure candidates aren't clustered in one direction.
+        This is the last step to guarantee good angular distribution.
+        """
+        if len(candidates) <= 1:
+            return candidates
+        
+        # Calculate ideal angular separation for even distribution
+        ideal_separation = 360 / max_candidates if max_candidates > 1 else 180
+        min_acceptable_separation = max(self.min_angular_separation, ideal_separation * 0.6)  # Use configured minimum
+        
+        # Start with the highest scoring candidate
+        candidates.sort(key=lambda x: x.overall_score, reverse=True)
+        final_selection = [candidates[0]]
+        
+        # Add candidates that maintain good angular separation
+        for candidate in candidates[1:]:
+            if len(final_selection) >= max_candidates:
+                break
+            
+            candidate_bearing = self._calculate_bearing_fast(from_lat, from_lon, candidate.lat, candidate.lon)
+            
+            # Check angular separation from all selected candidates
+            sufficient_separation = True
+            for selected in final_selection:
+                selected_bearing = self._calculate_bearing_fast(from_lat, from_lon, selected.lat, selected.lon)
+                angle_diff = abs(candidate_bearing - selected_bearing)
+                angle_diff = min(angle_diff, 360 - angle_diff)  # Handle wraparound
+                
+                if angle_diff < min_acceptable_separation:
+                    sufficient_separation = False
+                    break
+            
+            if sufficient_separation:
+                final_selection.append(candidate)
+        
+        # If we don't have enough candidates due to strict angular requirements,
+        # fill remaining slots with best remaining candidates (relaxed requirements)
+        if len(final_selection) < max_candidates and len(candidates) > len(final_selection):
+            remaining = [c for c in candidates if c.node_id not in {s.node_id for s in final_selection}]
+            relaxed_separation = max(60, min_acceptable_separation * 0.5)  # Relax to 60 degrees minimum
+            
+            for candidate in remaining:
+                if len(final_selection) >= max_candidates:
+                    break
+                
+                candidate_bearing = self._calculate_bearing_fast(from_lat, from_lon, candidate.lat, candidate.lon)
+                
+                # Check with relaxed separation requirements
+                sufficient_separation = True
+                for selected in final_selection:
+                    selected_bearing = self._calculate_bearing_fast(from_lat, from_lon, selected.lat, selected.lon)
+                    angle_diff = abs(candidate_bearing - selected_bearing)
+                    angle_diff = min(angle_diff, 360 - angle_diff)
+                    
+                    if angle_diff < relaxed_separation:
+                        sufficient_separation = False
+                        break
+                
+                if sufficient_separation:
+                    final_selection.append(candidate)
+        
+        # Log directional spread for debugging
+        if len(final_selection) > 1:
+            bearings = [self._calculate_bearing_fast(from_lat, from_lon, c.lat, c.lon) for c in final_selection]
+            bearings.sort()
+            min_gap = min((bearings[i+1] - bearings[i]) for i in range(len(bearings)-1))
+            max_gap = max((bearings[i+1] - bearings[i]) for i in range(len(bearings)-1))
+            wraparound_gap = 360 - bearings[-1] + bearings[0]
+            min_gap = min(min_gap, wraparound_gap)
+            max_gap = max(max_gap, wraparound_gap)
+            
+            logger.debug(f"Directional spread: {len(final_selection)} candidates, "
+                        f"angular gaps: {min_gap:.0f}°-{max_gap:.0f}°, "
+                        f"bearings: {[f'{b:.0f}°' for b in bearings]}")
+        
+        return final_selection
+    
+    def _ensure_minimum_candidates(self, selected_candidates: List[FastSemanticCandidate],
+                                 all_candidates: List[FastSemanticCandidate],
+                                 from_lat: float, from_lon: float, target_radius: float,
+                                 exclude_nodes: Set[int], min_score: float, 
+                                 required_count: int) -> List[FastSemanticCandidate]:
+        """
+        Guarantee minimum number of candidates through progressive fallback strategies.
+        
+        This method ensures we always return the requested number of candidates by:
+        1. Using selected candidates if we have enough
+        2. Relaxing distance constraints progressively 
+        3. Relaxing score constraints progressively
+        4. Relaxing angular diversity constraints
+        5. Final fallback to any available candidates
+        """
+        if len(selected_candidates) >= required_count:
+            return selected_candidates
+        
+        logger.info(f"Need {required_count} candidates but only have {len(selected_candidates)}, applying fallback strategies")
+        
+        # Start with what we have
+        result = selected_candidates.copy()
+        used_node_ids = {c.node_id for c in result}
+        
+        # Strategy 1: Relax distance constraints progressively
+        if len(result) < required_count:
+            result = self._fallback_relax_distance(
+                result, all_candidates, from_lat, from_lon, target_radius, 
+                exclude_nodes, min_score, required_count, used_node_ids
+            )
+            used_node_ids = {c.node_id for c in result}
+        
+        # Strategy 2: Relax score constraints progressively  
+        if len(result) < required_count:
+            result = self._fallback_relax_score(
+                result, all_candidates, from_lat, from_lon, target_radius,
+                exclude_nodes, min_score, required_count, used_node_ids
+            )
+            used_node_ids = {c.node_id for c in result}
+        
+        # Strategy 3: Relax angular diversity constraints
+        if len(result) < required_count:
+            result = self._fallback_relax_angular_diversity(
+                result, all_candidates, from_lat, from_lon, target_radius,
+                exclude_nodes, required_count, used_node_ids
+            )
+            used_node_ids = {c.node_id for c in result}
+        
+        # Strategy 4: Final fallback - take any remaining candidates
+        if len(result) < required_count:
+            result = self._fallback_any_candidates(
+                result, all_candidates, exclude_nodes, required_count, used_node_ids
+            )
+        
+        logger.info(f"Fallback strategies resulted in {len(result)} candidates (target: {required_count})")
+        
+        return result
+    
+    def _fallback_relax_distance(self, current_result: List[FastSemanticCandidate],
+                               all_candidates: List[FastSemanticCandidate],
+                               from_lat: float, from_lon: float, target_radius: float,
+                               exclude_nodes: Set[int], min_score: float,
+                               required_count: int, used_node_ids: Set[int]) -> List[FastSemanticCandidate]:
+        """Fallback 1: Progressively relax distance constraints"""
+        result = current_result.copy()
+        
+        # Try expanding distance constraints: 2x, 3x, 5x, then unlimited
+        distance_multipliers = [2.0, 3.0, 5.0, float('inf')]
+        
+        for multiplier in distance_multipliers:
+            if len(result) >= required_count:
+                break
+                
+            expanded_radius = target_radius * multiplier
+            logger.debug(f"Fallback: trying {multiplier}x distance ({expanded_radius:.0f}m)")
+            
+            for candidate in all_candidates:
+                if len(result) >= required_count:
+                    break
+                    
+                if (candidate.node_id in used_node_ids or 
+                    candidate.node_id in exclude_nodes or
+                    candidate.overall_score < min_score):
+                    continue
+                
+                distance = haversine_cached(from_lat, from_lon, candidate.lat, candidate.lon)
+                if distance <= expanded_radius:
+                    result.append(candidate)
+                    used_node_ids.add(candidate.node_id)
+        
+        return result
+    
+    def _fallback_relax_score(self, current_result: List[FastSemanticCandidate],
+                            all_candidates: List[FastSemanticCandidate],
+                            from_lat: float, from_lon: float, target_radius: float,
+                            exclude_nodes: Set[int], min_score: float,
+                            required_count: int, used_node_ids: Set[int]) -> List[FastSemanticCandidate]:
+        """Fallback 2: Progressively relax score constraints"""
+        result = current_result.copy()
+        
+        # Try relaxing score thresholds: 75%, 50%, 25%, 0%
+        score_multipliers = [0.75, 0.5, 0.25, 0.0]
+        
+        for multiplier in score_multipliers:
+            if len(result) >= required_count:
+                break
+                
+            relaxed_min_score = min_score * multiplier
+            logger.debug(f"Fallback: trying {multiplier*100:.0f}% score threshold ({relaxed_min_score:.3f})")
+            
+            for candidate in all_candidates:
+                if len(result) >= required_count:
+                    break
+                    
+                if (candidate.node_id in used_node_ids or 
+                    candidate.node_id in exclude_nodes or
+                    candidate.overall_score < relaxed_min_score):
+                    continue
+                
+                distance = haversine_cached(from_lat, from_lon, candidate.lat, candidate.lon)
+                if distance <= target_radius * 3.0:  # Use expanded radius from previous fallback
+                    result.append(candidate)
+                    used_node_ids.add(candidate.node_id)
+        
+        return result
+    
+    def _fallback_relax_angular_diversity(self, current_result: List[FastSemanticCandidate],
+                                        all_candidates: List[FastSemanticCandidate],
+                                        from_lat: float, from_lon: float, target_radius: float,
+                                        exclude_nodes: Set[int], required_count: int, 
+                                        used_node_ids: Set[int]) -> List[FastSemanticCandidate]:
+        """Fallback 3: Relax angular diversity constraints"""
+        result = current_result.copy()
+        
+        # Try relaxing angular separation: 60°, 45°, 30°, 0°
+        angular_thresholds = [60, 45, 30, 0]
+        
+        for min_angle in angular_thresholds:
+            if len(result) >= required_count:
+                break
+                
+            logger.debug(f"Fallback: trying {min_angle}° angular separation")
+            
+            for candidate in all_candidates:
+                if len(result) >= required_count:
+                    break
+                    
+                if (candidate.node_id in used_node_ids or 
+                    candidate.node_id in exclude_nodes):
+                    continue
+                
+                distance = haversine_cached(from_lat, from_lon, candidate.lat, candidate.lon)
+                if distance > target_radius * 5.0:  # Reasonable distance limit
+                    continue
+                
+                # Check angular separation if required
+                if min_angle > 0:
+                    candidate_bearing = self._calculate_bearing_fast(from_lat, from_lon, candidate.lat, candidate.lon)
+                    too_close = False
+                    
+                    for existing in result:
+                        existing_bearing = self._calculate_bearing_fast(from_lat, from_lon, existing.lat, existing.lon)
+                        angle_diff = abs(candidate_bearing - existing_bearing)
+                        angle_diff = min(angle_diff, 360 - angle_diff)
+                        
+                        if angle_diff < min_angle:
+                            too_close = True
+                            break
+                    
+                    if too_close:
+                        continue
+                
+                result.append(candidate)
+                used_node_ids.add(candidate.node_id)
+        
+        return result
+    
+    def _fallback_any_candidates(self, current_result: List[FastSemanticCandidate],
+                               all_candidates: List[FastSemanticCandidate],
+                               exclude_nodes: Set[int], required_count: int,
+                               used_node_ids: Set[int]) -> List[FastSemanticCandidate]:
+        """Fallback 4: Take any remaining candidates (last resort)"""
+        result = current_result.copy()
+        
+        logger.debug(f"Final fallback: taking any available candidates")
+        
+        # Sort by score and take the best remaining candidates
+        remaining_candidates = [
+            c for c in all_candidates 
+            if c.node_id not in used_node_ids and c.node_id not in exclude_nodes
+        ]
+        remaining_candidates.sort(key=lambda x: x.overall_score, reverse=True)
+        
+        needed = required_count - len(result)
+        result.extend(remaining_candidates[:needed])
+        
+        return result
+    
+    def _deterministic_directional_selection(self, candidates: List[FastSemanticCandidate],
+                                           from_lat: float, from_lon: float, max_candidates: int) -> List[FastSemanticCandidate]:
+        """Original deterministic directional selection"""
         selected = []
         min_angle_separation = 360 / max_candidates  # Even distribution
         
