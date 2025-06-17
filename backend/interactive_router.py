@@ -288,9 +288,10 @@ class InteractiveRouteBuilder:
         # Calculate target radius based on remaining distance
         remaining_distance = route.target_distance - route.total_distance
         slack_factor = 1.2
-        target_radius = slack_factor * remaining_distance / (2 * math.pi)
-        target_radius = max(200, min(target_radius, 2000))
+        calculated_radius = slack_factor * remaining_distance / (2 * math.pi)
+        target_radius = max(800, min(calculated_radius, 2000))  # Increased minimum from 200m to 800m
 
+        logger.info(f"DEBUG RADIUS: target_distance={route.target_distance:.0f}m, total_distance={route.total_distance:.0f}m, remaining={remaining_distance:.0f}m, calculated_radius={calculated_radius:.0f}m, final_radius={target_radius:.0f}m")
         logger.info(f"Ultra-fast candidate generation from node {from_node} ({from_lat:.4f}, {from_lon:.4f}) with radius {target_radius:.0f}m")
 
         # Get candidates using ultra-fast generator
@@ -378,8 +379,10 @@ class InteractiveRouteBuilder:
         # Calculate target radius based on remaining distance
         remaining_distance = route.target_distance - route.total_distance
         slack_factor = 1.2
-        target_radius = slack_factor * remaining_distance / (2 * math.pi)
-        target_radius = max(200, min(target_radius, 2000))
+        calculated_radius = slack_factor * remaining_distance / (2 * math.pi)
+        target_radius = max(800, min(calculated_radius, 2000))  # Increased minimum from 200m to 800m
+
+        logger.info(f"DEBUG RADIUS (regular): target_distance={route.target_distance:.0f}m, total_distance={route.total_distance:.0f}m, remaining={remaining_distance:.0f}m, calculated_radius={calculated_radius:.0f}m, final_radius={target_radius:.0f}m")
 
         from_lat = session.graph.nodes[from_node]["y"]
         from_lon = session.graph.nodes[from_node]["x"]
@@ -443,7 +446,7 @@ class InteractiveRouteBuilder:
         remaining_distance = route.target_distance - route.total_distance
         slack_factor = 1.2
         target_radius = slack_factor * remaining_distance / (2 * math.pi)
-        target_radius = max(200, min(target_radius, 2000))
+        target_radius = max(800, min(target_radius, 2000))  # Increased minimum from 200m to 800m
 
         from_lat = session.graph.nodes[from_node]["y"]
         from_lon = session.graph.nodes[from_node]["x"]
