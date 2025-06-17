@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Perfect10k Unified Launcher
-Starts both backend and frontend servers with a single command.
+Perfect10k Launcher
+Starts the backend server which serves both the API and frontend.
 """
 
 import os
@@ -30,7 +30,7 @@ def print_colored(text, color):
 def print_banner():
     print_colored("=" * 60, Colors.BLUE)
     print_colored("🚀 Perfect10k Interactive Route Builder", Colors.BOLD)
-    print_colored("   User-driven step-by-step route construction", Colors.BLUE)
+    print_colored("   Full-stack server with integrated frontend", Colors.BLUE)
     print_colored("=" * 60, Colors.BLUE)
     print()
 
@@ -109,32 +109,6 @@ def start_backend():
         return None
 
 
-def start_frontend():
-    """Start the frontend server."""
-    print_colored("🌐 Starting frontend server...", Colors.BLUE)
-
-    frontend_dir = Path("../frontend")
-    if not frontend_dir.exists():
-        print_colored("❌ Frontend directory not found", Colors.RED)
-        return None
-
-    # Start frontend HTTP server
-    cmd = [sys.executable, "server.py"]
-
-    try:
-        process = subprocess.Popen(
-            cmd,
-            cwd=frontend_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=1,
-        )
-        print_colored("✅ Frontend server starting on http://localhost:3000", Colors.GREEN)
-        return process
-    except Exception as e:
-        print_colored(f"❌ Failed to start frontend: {e}", Colors.RED)
-        return None
 
 
 def monitor_process(process, name, manager):
@@ -149,11 +123,11 @@ def monitor_process(process, name, manager):
         pass
 
 
-def wait_for_servers():
-    """Wait for servers to start up."""
-    print_colored("⏳ Waiting for servers to start...", Colors.YELLOW)
+def wait_for_server():
+    """Wait for server to start up."""
+    print_colored("⏳ Waiting for server to start...", Colors.YELLOW)
 
-    # Wait a bit for servers to start
+    # Wait a bit for server to start
     time.sleep(3)
 
     # Test backend
@@ -167,16 +141,6 @@ def wait_for_servers():
             print_colored("⚠️  Backend health check failed", Colors.YELLOW)
     except Exception:
         print_colored("⚠️  Cannot connect to backend", Colors.YELLOW)
-
-    # Test frontend
-    try:
-        response = requests.get("http://localhost:3000", timeout=5)
-        if response.status_code == 200:
-            print_colored("✅ Frontend is responding", Colors.GREEN)
-        else:
-            print_colored("⚠️  Frontend health check failed", Colors.YELLOW)
-    except Exception:
-        print_colored("⚠️  Cannot connect to frontend", Colors.YELLOW)
 
 
 def main():
@@ -203,49 +167,31 @@ def main():
             return 1
         manager.add_process(backend_process, "Backend")
 
-        # Start frontend
-        frontend_process = start_frontend()
-        if not frontend_process:
-            manager.cleanup()
-            return 1
-        manager.add_process(frontend_process, "Frontend")
-
-        # Start monitoring threads
+        # Start monitoring thread
         backend_thread = threading.Thread(
             target=monitor_process, args=(backend_process, "Backend", manager)
         )
-        frontend_thread = threading.Thread(
-            target=monitor_process, args=(frontend_process, "Frontend", manager)
-        )
 
         backend_thread.daemon = True
-        frontend_thread.daemon = True
-
         backend_thread.start()
-        frontend_thread.start()
 
-        # Wait for servers to be ready
-        wait_for_servers()
+        # Wait for server to be ready
+        wait_for_server()
 
         print()
         print_colored("🎉 Perfect10k is running!", Colors.GREEN)
+        print_colored("   Application: http://localhost:8000", Colors.BLUE)
         print_colored("   API Docs: http://localhost:8000/docs", Colors.BLUE)
         print()
-        print_colored("💡 Open http://localhost:3000 in your browser", Colors.YELLOW)
-        print_colored("   Backend API: http://localhost:8000", Colors.YELLOW)
-        print()
-        print_colored("Press Ctrl+C to stop all servers", Colors.BLUE)
+        print_colored("Press Ctrl+C to stop the server", Colors.BLUE)
 
         # Keep running until interrupted
         while manager.running:
             time.sleep(1)
 
-            # Check if processes are still running
+            # Check if process is still running
             if backend_process.poll() is not None:
                 print_colored("❌ Backend process died", Colors.RED)
-                break
-            if frontend_process.poll() is not None:
-                print_colored("❌ Frontend process died", Colors.RED)
                 break
 
     except KeyboardInterrupt:

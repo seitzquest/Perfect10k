@@ -5,12 +5,11 @@
 
 class ApiClient {
     constructor(baseUrl = '') {
-        // Auto-detect backend URL based on current protocol and host
         if (!baseUrl) {
-            const protocol = window.location.protocol;
-            const hostname = window.location.hostname;
-            const port = protocol === 'https:' ? '8000' : '8000';
-            this.baseUrl = `${protocol}//${hostname}:${port}`;
+            // Always use relative paths - backend serves frontend and handles API
+            // In development: backend serves frontend on :8000
+            // In production: nginx proxies everything to backend on :8000
+            this.baseUrl = '';
         } else {
             this.baseUrl = baseUrl;
         }

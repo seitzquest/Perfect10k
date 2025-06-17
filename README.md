@@ -11,11 +11,11 @@ uv sync
 # Create SSL certificates (for mobile geolocation)
 ./create_ssl_certs.sh
 
-# Start both servers
+# Start server
 python run.py
 ```
 
-Access at **https://localhost:8000** (accept SSL warning)
+Access at **http://localhost:8000**
 
 ## How It Works
 
