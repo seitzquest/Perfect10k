@@ -53,7 +53,7 @@ class FastCandidateGenerator:
         self.diversity_enforcement = True  # Enforce spatial diversity in selection
         
         # Angular diversity parameters
-        self.min_angular_separation = 90  # Minimum degrees between candidates (90° = good spread for 3)
+        self.min_angular_separation = 45  # Minimum degrees between candidates (45° = realistic spread)
         self.distance_threshold = 500  # Minimum meters between candidates
         
         # Caching
@@ -84,12 +84,12 @@ class FastCandidateGenerator:
         
         logger.info(f"FastGenerator probabilistic mode: {enabled}, exploration: {self.exploration_factor:.2f}, diversity: {diversity_enforcement}")
     
-    def set_diversity_parameters(self, min_angular_separation: float = 90, distance_threshold: float = 500):
+    def set_diversity_parameters(self, min_angular_separation: float = 45, distance_threshold: float = 500):
         """
         Configure spatial and angular diversity parameters.
         
         Args:
-            min_angular_separation: Minimum degrees between candidates (90° good for 3 candidates)
+            min_angular_separation: Minimum degrees between candidates (45° good for 3 candidates)
             distance_threshold: Minimum meters between candidates
         """
         self.min_angular_separation = max(30, min(180, min_angular_separation))  # Clamp 30-180 degrees
@@ -666,7 +666,7 @@ class FastCandidateGenerator:
         
         # Calculate ideal angular separation for even distribution
         ideal_separation = 360 / max_candidates if max_candidates > 1 else 180
-        min_acceptable_separation = max(self.min_angular_separation, ideal_separation * 0.6)  # Use configured minimum
+        min_acceptable_separation = max(self.min_angular_separation, ideal_separation * 0.3)  # Use configured minimum
         
         # Start with the highest scoring candidate
         candidates.sort(key=lambda x: x.overall_score, reverse=True)
