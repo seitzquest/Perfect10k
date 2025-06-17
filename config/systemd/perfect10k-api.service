@@ -18,7 +18,7 @@ Environment=PYTHONPATH=/var/www/Perfect10k
 Environment=LOG_DIR=/var/www/Perfect10k/logs
 
 # Use the Python from the virtual environment directly instead of uv
-ExecStart=/var/www/Perfect10k/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+ExecStart=/var/www/Perfect10k/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
 
 # Restart policy
 Restart=on-failure
