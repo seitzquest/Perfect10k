@@ -3,6 +3,7 @@ Perfect10k Backend - Interactive Route Builder
 New simplified approach for user-driven route construction.
 """
 
+import os
 import time
 from pathlib import Path
 
@@ -34,8 +35,13 @@ def ensure_file_logging():
     """Configure file logging on first use to improve startup performance."""
     global _file_logging_configured
     if not _file_logging_configured:
+        # Use environment variable or default to logs directory relative to project root
+        log_dir = os.environ.get("LOG_DIR", str(Path(__file__).parent.parent / "logs"))
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = Path(log_dir) / "perfect10k.log"
+        
         logger.add(
-            "perfect10k.log",
+            str(log_path),
             rotation="10 MB",
             retention="7 days",
             level="INFO",

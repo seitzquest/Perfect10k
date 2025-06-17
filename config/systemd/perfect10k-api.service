@@ -15,6 +15,7 @@ WorkingDirectory=/var/www/Perfect10k/backend
 Environment=PATH=/var/www/Perfect10k/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=VIRTUAL_ENV=/var/www/Perfect10k/.venv
 Environment=PYTHONPATH=/var/www/Perfect10k
+Environment=LOG_DIR=/var/www/Perfect10k/logs
 
 # Use the Python from the virtual environment directly instead of uv
 ExecStart=/var/www/Perfect10k/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
@@ -32,6 +33,7 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/www/Perfect10k/backend/cache
 ReadWritePaths=/var/www/Perfect10k/cache
+ReadWritePaths=/var/www/Perfect10k/logs
 ReadWritePaths=/tmp
 
 # Resource limits
