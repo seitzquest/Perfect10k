@@ -66,7 +66,7 @@ fi
 
 # Step 4: Docker compose build
 print_step "Building Docker containers..."
-if docker-compose build --no-cache; then
+if docker-compose build; then
     print_success "Docker build completed successfully"
 else
     print_error "Docker build failed"
