@@ -16,16 +16,16 @@ WorkingDirectory=/var/www/Perfect10k
 ExecStartPre=/bin/bash -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
 
 # Stop any existing container first
-ExecStartPre=-/usr/bin/docker compose down
+ExecStartPre=-/usr/bin/docker-compose down
 
 # Build only if image doesn't exist
-ExecStartPre=/bin/bash -c 'docker image inspect perfect10k-perfect10k-app >/dev/null 2>&1 || docker compose build'
+ExecStartPre=/bin/bash -c 'docker image inspect perfect10k-perfect10k-app >/dev/null 2>&1 || docker-compose build'
 
 # Start the container
-ExecStart=/usr/bin/docker compose up -d
+ExecStart=/usr/bin/docker-compose up -d
 
 # Stop the container
-ExecStop=/usr/bin/docker compose down
+ExecStop=/usr/bin/docker-compose down
 
 # Health check
 ExecStartPost=/bin/bash -c 'sleep 10 && curl -f http://localhost:8000/health || exit 1'
