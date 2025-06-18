@@ -465,17 +465,19 @@ class InteractiveRouteBuilder:
         
         # Get previous position for directional constraint (Denavit-Hartenberg-like)
         previous_lat, previous_lon = None, None
-        if len(route.waypoints) >= 2:
-            prev_node = route.waypoints[-2].node_id
+        if len(route.current_waypoints) >= 2:
+            prev_node = route.current_waypoints[-2]
             previous_lat = session.graph.nodes[prev_node]["y"]
             previous_lon = session.graph.nodes[prev_node]["x"]
         
         # Precompute area scores (lightweight for Pi)
+        # Use a reasonable search radius for Pi optimization (2km default)
+        search_radius = 2000  # meters - optimized for Pi performance
         success = self.simple_candidate_generator.precompute_area_scores_fast(
             session.graph,
             from_lat,
             from_lon,
-            route.radius_m,
+            search_radius,
             route.preference
         )
         
