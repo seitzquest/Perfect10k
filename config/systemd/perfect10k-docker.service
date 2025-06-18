@@ -1,0 +1,35 @@
+[Unit]
+Description=Perfect10k API Server (Docker Container)
+After=docker.service
+Requires=docker.service
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+[Service]
+Type=forking
+User=root
+Group=root
+WorkingDirectory=/var/www/Perfect10k
+
+# Stop any existing container first
+ExecStartPre=-/usr/bin/docker-compose down
+
+# Start the container
+ExecStart=/usr/bin/docker-compose up -d
+
+# Stop the container
+ExecStop=/usr/bin/docker-compose down
+
+# Restart policy
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=perfect10k-docker
+
+[Install]
+WantedBy=multi-user.target
