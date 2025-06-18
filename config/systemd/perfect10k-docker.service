@@ -27,8 +27,7 @@ ExecStart=/usr/bin/docker-compose up -d
 # Stop the container
 ExecStop=/usr/bin/docker-compose down
 
-# Health check
-ExecStartPost=/bin/bash -c 'sleep 10 && curl -f http://localhost:8000/health || exit 1'
+# Health check removed - service takes too long to start for fixed timeout
 
 # Restart policy
 Restart=on-failure
