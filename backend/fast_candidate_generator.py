@@ -125,7 +125,7 @@ class FastCandidateGenerator:
             # Generate fresh candidates
             cache_key = self.precompute_area_scores_fast(
                 graph, center_lat, center_lon, 
-                radius_m=8000, preference=preference, max_nodes=1000
+                radius_m=8000, preference=preference, max_nodes=2000
             )
             
             candidates = self.generate_candidates_ultra_fast(
@@ -153,7 +153,7 @@ class FastCandidateGenerator:
     
     def precompute_area_scores_fast(self, graph: nx.MultiGraph, center_lat: float, center_lon: float, 
                                    radius_m: float = 8000, preference: str = "scenic nature",
-                                   max_nodes: int = 1000) -> str:
+                                   max_nodes: int = 2000) -> str:
         """
         Fast precomputation using intelligent sampling and optimized scoring.
         

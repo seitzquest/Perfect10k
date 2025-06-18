@@ -279,7 +279,7 @@ class InteractiveRouteBuilder:
                 from_lon,  # Use current waypoint location
                 precompute_radius,
                 route.preference,
-                max_nodes=1000  # Limit nodes for speed
+                max_nodes=2000  # Increased for Pi compatibility
             )
         
         # Use the cache key for current waypoint

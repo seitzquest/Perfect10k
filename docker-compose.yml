@@ -1,0 +1,19 @@
+services:
+  perfect10k-app:
+    build: .
+    container_name: perfect10k-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_DIR=/app/logs
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+      - ./backend/cache:/app/backend/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
