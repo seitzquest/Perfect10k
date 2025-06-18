@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200"><svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Large, symmetrical round trip route scaled to fill image -->
+  <path d="M 32 134 Q 66 15 134 49 Q 185 100 134 151 Q 66 185 32 134" stroke="#626F47" stroke-width="10" fill="none" stroke-dasharray="17,14" stroke-linecap="round"></path>
+  
+  <!-- Start/End point (combined) -->
+  <circle cx="32" cy="134" r="14" fill="#626F47"></circle>
+  
+  <!-- Midpoint markers -->
+  <circle cx="134" cy="49" r="10" fill="#F0BB78"></circle>
+  <circle cx="134" cy="151" r="10" fill="#F0BB78"></circle>
+</svg><style>@media (prefers-color-scheme: light) { :root { filter: none; } }
+@media (prefers-color-scheme: dark) { :root { filter: none; } }
+</style></svg>
