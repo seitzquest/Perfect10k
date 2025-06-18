@@ -128,6 +128,19 @@ class InteractiveRouteBuilder:
                 logger.warning(f"Fast candidate generator not available: {e}")
                 self._fast_candidate_generator = None
         return self._fast_candidate_generator
+    
+    @property
+    def simple_candidate_generator(self):
+        """Get simple candidate generator instance optimized for Raspberry Pi (lazy initialization)."""
+        if not hasattr(self, '_simple_candidate_generator') or self._simple_candidate_generator is None:
+            try:
+                from simple_router_adapter import create_simple_adapter
+                self._simple_candidate_generator = create_simple_adapter(self.semantic_overlay_manager)
+                logger.info("Initialized simple candidate generator for Raspberry Pi optimization")
+            except ImportError as e:
+                logger.warning(f"Simple candidate generator not available: {e}")
+                self._simple_candidate_generator = None
+        return self._simple_candidate_generator
 
     def get_or_create_client_session(self, client_id: str, lat: float, lon: float, radius: float = 8000) -> ClientSession:
         """Get existing client session or create new one with cached graph."""
@@ -210,16 +223,20 @@ class InteractiveRouteBuilder:
         self.graph_cache[cache_key] = graph
         return graph
 
-    def _generate_candidates_for_session(self, session: ClientSession, from_node: int, use_fast_generator: bool = True) -> list[RouteCandidate]:
-        """Generate candidates using fast or regular semantic precomputation."""
+    def _generate_candidates_for_session(self, session: ClientSession, from_node: int, use_simple_generator: bool = True) -> list[RouteCandidate]:
+        """Generate candidates using simple Pi-optimized generator or fallback to complex generators."""
         if not session.active_route:
             raise ValueError("No active route in session")
 
         route = session.active_route
 
-        # Choose generation method based on availability and preference
-        if use_fast_generator and self.fast_candidate_generator is not None:
+        # Prefer simple generator for Raspberry Pi optimization
+        if use_simple_generator and self.simple_candidate_generator is not None:
+            return self._generate_candidates_simple(session, from_node)
+        # Fallback to fast generator
+        elif self.fast_candidate_generator is not None:
             return self._generate_candidates_fast(session, from_node)
+        # Fallback to regular generator
         else:
             return self._generate_candidates_regular(session, from_node)
     
@@ -433,6 +450,51 @@ class InteractiveRouteBuilder:
             ))
 
         logger.info(f"Generated {len(candidates)} candidates using regular semantic scoring")
+        return candidates
+
+    def _generate_candidates_simple(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
+        """Generate candidates using simple Pi-optimized algorithm."""
+        if not session.active_route:
+            raise ValueError("No active route in session")
+
+        route = session.active_route
+        
+        # Get current position
+        from_lat = session.graph.nodes[from_node]["y"]
+        from_lon = session.graph.nodes[from_node]["x"]
+        
+        # Get previous position for directional constraint (Denavit-Hartenberg-like)
+        previous_lat, previous_lon = None, None
+        if len(route.waypoints) >= 2:
+            prev_node = route.waypoints[-2].node_id
+            previous_lat = session.graph.nodes[prev_node]["y"]
+            previous_lon = session.graph.nodes[prev_node]["x"]
+        
+        # Precompute area scores (lightweight for Pi)
+        success = self.simple_candidate_generator.precompute_area_scores_fast(
+            session.graph,
+            from_lat,
+            from_lon,
+            route.radius_m,
+            route.preference
+        )
+        
+        if not success:
+            logger.warning("Simple precomputation failed, falling back to distance-only")
+            return self._generate_candidates_distance_only(session, from_node)
+        
+        # Generate candidates using simple algorithm
+        candidates = self.simple_candidate_generator.generate_candidates_ultra_fast(
+            session.graph,
+            from_node,
+            from_lat,
+            from_lon,
+            previous_lat=previous_lat,
+            previous_lon=previous_lon,
+            target_distance=route.target_distance
+        )
+        
+        logger.info(f"Generated {len(candidates)} candidates using simple Pi-optimized algorithm")
         return candidates
 
     def _generate_candidates_distance_only(self, session: ClientSession, from_node: int) -> list[RouteCandidate]:
