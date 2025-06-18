@@ -19,7 +19,7 @@ from dataclasses import dataclass
 @dataclass
 class SimpleCandidate:
     """A routing candidate with basic properties"""
-    node_id: str
+    node_id: int  # Graph node IDs are integers
     lat: float
     lon: float
     distance_from_current: float

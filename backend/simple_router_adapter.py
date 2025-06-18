@@ -17,7 +17,7 @@ from simple_candidate_generator import SimpleCandidate, SimpleCandidateGenerator
 class RouteCandidate:
     """Adapter class matching the existing RouteCandidate interface"""
     def __init__(self, simple_candidate: SimpleCandidate, explanation: str = ""):
-        self.node_id = int(simple_candidate.node_id) if simple_candidate.node_id.isdigit() else hash(simple_candidate.node_id)
+        self.node_id = simple_candidate.node_id  # Already an integer from the graph
         self.lat = simple_candidate.lat
         self.lon = simple_candidate.lon
         self.value_score = simple_candidate.feature_score
