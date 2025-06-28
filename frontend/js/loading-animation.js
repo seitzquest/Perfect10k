@@ -75,6 +75,39 @@ class LoadingAnimationManager {
                 pointer-events: auto;
             }
             
+            /* Hide text loading on mobile (show only dots) */
+            @media (max-width: 640px) {
+                .loading-text,
+                .loading-progress,
+                .loading-phases,
+                .loading-details {
+                    display: none !important;
+                }
+                
+                .loading-content {
+                    padding: 8px 12px;
+                }
+                
+                .loading-overlay {
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: auto;
+                    right: auto;
+                }
+            }
+            
+            /* Hide dots loading on desktop (show only text) */
+            @media (min-width: 641px) {
+                .loading-spinner {
+                    display: none !important;
+                }
+                
+                .loading-header {
+                    gap: 0;
+                }
+            }
+            
             .loading-overlay.hidden {
                 display: none;
             }

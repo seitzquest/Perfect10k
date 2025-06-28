@@ -26,7 +26,7 @@ class ApiClient {
     /**
      * Start a new interactive routing session with loading animation (async version)
      */
-    async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
+    async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000, showLoading = false) {
         const requestData = {
             lat: lat,
             lon: lon,
@@ -45,11 +45,29 @@ class ApiClient {
                     body: JSON.stringify(requestData)
                 });
                 
-                // Start loading animation and poll for results
-                window.loadingManager.showLoading({
-                    title: "Finding Perfect Route",
-                    description: `Analyzing natural features for ${preference} routes...`
-                });
+                // Check if job completed immediately
+                if (jobResponse.status === 'completed') {
+                    // Job completed immediately, no need to poll
+                    console.log('Job completed immediately, no polling needed');
+                    const response = jobResponse.result;
+                    
+                    // Store session ID from completed job (check both possible field names)
+                    this.currentSession = response.session_id || response.client_id;
+                    
+                    // Log performance info for debugging
+                    console.log('Async route generation completed:', response);
+                    console.log('Current session set to:', this.currentSession);
+                    
+                    return response;
+                }
+                
+                // Start loading animation and poll for results (only if requested)
+                if (showLoading) {
+                    window.loadingManager.showLoading({
+                        title: "Finding Perfect Route",
+                        description: `Analyzing natural features for ${preference} routes...`
+                    });
+                }
                 
                 const response = await this.pollJobUntilComplete(jobResponse.job_id);
                 

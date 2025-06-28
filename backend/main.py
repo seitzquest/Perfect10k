@@ -80,9 +80,9 @@ def get_route_builder():
     """Get route builder instance (lazy initialization for faster startup)."""
     global route_builder
     if route_builder is None:
-        from interactive_router import InteractiveRouteBuilder
+        from clean_router import CleanRouter
 
-        route_builder = InteractiveRouteBuilder()
+        route_builder = CleanRouter(get_overlay_manager())
     return route_builder
 
 
@@ -176,6 +176,21 @@ async def start_session(request_data: StartRouteRequest, request: Request):
         )
         return result
 
+    except ValueError as e:
+        if "No graph data available" in str(e):
+            logger.warning(f"No graph data for location: {str(e)}")
+            raise HTTPException(
+                status_code=404, 
+                detail={
+                    "error": "No graph data available for this location",
+                    "message": str(e),
+                    "suggestion": "This area needs OSM data to be loaded first. Please contact the administrator to add coverage for this geographic region.",
+                    "location": {"lat": request_data.lat, "lon": request_data.lon}
+                }
+            ) from e
+        else:
+            logger.error(f"Failed to start route: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to start route: {str(e)}") from e
     except Exception as e:
         logger.error(f"Failed to start route: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to start route: {str(e)}") from e
@@ -183,67 +198,80 @@ async def start_session(request_data: StartRouteRequest, request: Request):
 
 @app.post("/api/start-session-async")
 async def start_session_async(request_data: StartRouteRequest, request: Request):
-    """Initialize a new interactive routing session asynchronously."""
-    ensure_file_logging()
-    client_id = get_client_id(request, request_data.client_id)
-    logger.info(
-        f"Starting async route for client {client_id} at ({request_data.lat:.6f}, {request_data.lon:.6f})"
-    )
-
+    """Async session start - returns immediate result since clean system is fast."""
+    logger.info("Async endpoint called - using fast sync processing")
+    
+    # Clean system is fast enough - get sync result and wrap in async format
     try:
-        from async_job_manager import start_route_analysis_async
-
-        job_id = start_route_analysis_async(
-            get_route_builder(),
-            client_id=client_id,
-            lat=request_data.lat,
-            lon=request_data.lon,
-            preference=request_data.preference,
-            target_distance=request_data.target_distance,
-        )
-
+        sync_result = await start_session(request_data, request)
+        
+        # Return format that frontend expects - session_id at top level
         return {
-            "job_id": job_id,
-            "status": "started",
-            "message": "Route analysis started in background",
-            "client_id": client_id,
-            "poll_url": f"/api/job-status/{job_id}",
+            "job_id": sync_result.get("session_id", "immediate"),
+            "status": "completed", 
+            "result": {
+                # Frontend expects session_id at top level of result object
+                "session_id": sync_result.get("session_id"),
+                "client_id": sync_result.get("session_id"),  # Fallback field
+                "candidates": sync_result.get("candidates", []),
+                "route_stats": sync_result.get("route_stats", {}),
+                "start_location": sync_result.get("start_location", {}),
+                "generation_info": sync_result.get("generation_info", {})
+            },
+            "message": "Route generation completed immediately",
+            "completed_at": time.time()
         }
-
+        
     except Exception as e:
         logger.error(f"Failed to start async route: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to start async route: {str(e)}") from e
+        return {
+            "job_id": "failed",
+            "status": "failed",
+            "error": str(e),
+            "message": "Route generation failed"
+        }
 
 
 @app.get("/api/job-status/{job_id}")
 async def get_job_status(job_id: str):
-    """Get status of a background job."""
+    """Get status of a job - for immediate completion jobs, return completed status."""
     try:
-        from async_job_manager import job_manager
-
-        status = job_manager.get_job_status(job_id)
-        if not status:
-            raise HTTPException(status_code=404, detail="Job not found")
-
-        return status
-
+        # For the clean system, jobs complete immediately
+        # Check if this is a valid session ID
+        route_builder = get_route_builder()
+        
+        if job_id == "failed":
+            return {
+                "job_id": job_id,
+                "status": "failed",
+                "error": "Route generation failed",
+                "message": "Job failed during execution"
+            }
+        elif job_id == "immediate":
+            return {
+                "job_id": job_id,
+                "status": "completed",
+                "message": "Job completed immediately - no polling needed"
+            }
+        elif job_id in route_builder.client_sessions:
+            # Valid session exists - job is completed
+            session = route_builder.client_sessions[job_id]
+            return {
+                "job_id": job_id,
+                "status": "completed",
+                "message": "Route generation completed",
+                "session_id": job_id,
+                "completed_at": session.created_at if session else time.time()
+            }
+        else:
+            # Session not found - might be old or invalid
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+            
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get job status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}") from e
-
-
-@app.get("/api/jobs/stats")
-async def get_job_stats():
-    """Get job manager statistics."""
-    try:
-        from async_job_manager import job_manager
-
-        return job_manager.get_stats()
-    except Exception as e:
-        logger.error(f"Failed to get job stats: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get job stats: {str(e)}") from e
 
 
 @app.post("/api/add-waypoint")
@@ -342,6 +370,48 @@ async def delete_session(client_id: str):
         return {"success": True, "message": f"Client session {client_id} deleted"}
     else:
         raise HTTPException(status_code=404, detail="Client session not found")
+
+
+# DEPRECATED: Orienteering-Based API Endpoints (removed in clean refactor)
+
+@app.post("/api/explore-alternatives")
+async def explore_route_alternatives(request: dict):
+    """DEPRECATED: Explore alternative routes using beam search with orienteering optimization."""
+    return {
+        "error": "This endpoint has been deprecated in the clean refactor",
+        "message": "Orienteering-based route exploration is no longer available. Use the new interpretable candidate system.",
+        "deprecated": True
+    }
+
+
+@app.get("/api/route-quality/{client_id}")
+async def get_route_quality_metrics(client_id: str):
+    """DEPRECATED: Get orienteering-based quality metrics for a route."""
+    return {
+        "error": "This endpoint has been deprecated in the clean refactor",
+        "message": "Orienteering-based quality metrics are no longer available. Use route status endpoint for basic metrics.",
+        "deprecated": True
+    }
+
+
+@app.get("/api/orienteering-performance")
+async def get_orienteering_performance():
+    """DEPRECATED: Get performance metrics for the orienteering system."""
+    return {
+        "error": "This endpoint has been deprecated in the clean refactor",
+        "message": "Orienteering performance metrics are no longer available. Use /api/performance-stats for new system metrics.",
+        "deprecated": True
+    }
+
+
+@app.post("/api/configure-orienteering")
+async def configure_orienteering_system(request: dict):
+    """DEPRECATED: Configure orienteering system parameters."""
+    return {
+        "error": "This endpoint has been deprecated in the clean refactor",
+        "message": "Orienteering system configuration is no longer available. The new system auto-configures based on preferences.",
+        "deprecated": True
+    }
 
 
 # Backwards compatibility with old API (for existing frontend)
@@ -448,8 +518,16 @@ async def serve_frontend():
 async def get_cache_statistics():
     """Get comprehensive cache statistics."""
     try:
-        stats = get_route_builder().get_cache_statistics()
-        return stats
+        # For CleanRouter, return basic statistics
+        route_builder = get_route_builder()
+        if hasattr(route_builder, 'get_statistics'):
+            return route_builder.get_statistics()
+        else:
+            return {
+                "system": "clean_router",
+                "active_sessions": len(route_builder.client_sessions) if hasattr(route_builder, 'client_sessions') else 0,
+                "message": "Clean system - minimal caching for optimal performance"
+            }
     except Exception as e:
         logger.error(f"Failed to get cache statistics: {str(e)}")
         raise HTTPException(
@@ -457,84 +535,30 @@ async def get_cache_statistics():
         ) from e
 
 
-@app.post("/api/clear-semantic-cache")
-async def clear_semantic_cache():
-    """Clear semantic candidate cache for fresh probabilistic results."""
-    try:
-        route_builder = get_route_builder()
-
-        # Clear fast generator cache if available
-        if (
-            hasattr(route_builder, "fast_candidate_generator")
-            and route_builder.fast_candidate_generator
-        ):
-            if hasattr(route_builder.fast_candidate_generator, "clear_cache"):
-                route_builder.fast_candidate_generator.clear_cache()
-
-        # Clear regular generator cache if available
-        if hasattr(route_builder, "candidate_generator") and route_builder.candidate_generator:
-            if hasattr(route_builder.candidate_generator, "clear_cache"):
-                route_builder.candidate_generator.clear_cache()
-
-        logger.info("Cleared semantic candidate caches for fresh probabilistic generation")
-
-        return {
-            "success": True,
-            "message": "Semantic candidate caches cleared successfully",
-            "timestamp": time.time(),
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to clear semantic cache: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to clear semantic cache: {str(e)}"
-        ) from e
+# Removed duplicate endpoint - kept the updated version below
 
 
 @app.get("/api/performance-stats")
 async def get_performance_statistics():
-    """Get comprehensive performance statistics including fast generation metrics."""
+    """Get comprehensive performance statistics for the clean candidate generation system."""
     try:
         route_builder = get_route_builder()
         stats = {
-            "cache_stats": route_builder.get_cache_statistics(),
             "session_count": len(route_builder.client_sessions),
-            "probabilistic_mode": False,
-            "exploration_factor": 0.0,
+            "system_type": "clean_candidate_generator",
+            "active_generators": len(route_builder.candidate_generators) if hasattr(route_builder, "candidate_generators") else 0
         }
 
-        # Add probabilistic generator stats if available
-        if (
-            hasattr(route_builder, "fast_candidate_generator")
-            and route_builder.fast_candidate_generator
-        ):
-            fast_gen = route_builder.fast_candidate_generator
-            if hasattr(fast_gen, "probabilistic_mode"):
-                stats["probabilistic_mode"] = fast_gen.probabilistic_mode
-                stats["exploration_factor"] = fast_gen.exploration_factor
+        # Add statistics from our clean candidate generators
+        if hasattr(route_builder, "candidate_generators"):
+            generator_stats = {}
+            for area_key, generator in route_builder.candidate_generators.items():
+                generator_stats[area_key] = generator.get_statistics()
+            stats["generator_statistics"] = generator_stats
 
-        # Add fast generator stats if available
-        if (
-            hasattr(route_builder, "fast_candidate_generator")
-            and route_builder.fast_candidate_generator
-        ):
-            if hasattr(route_builder.fast_candidate_generator, "get_performance_stats"):
-                stats["fast_generator_stats"] = (
-                    route_builder.fast_candidate_generator.get_performance_stats()
-                )
-            if hasattr(route_builder.fast_candidate_generator, "get_probabilistic_status"):
-                stats["fast_generator_probabilistic"] = (
-                    route_builder.fast_candidate_generator.get_probabilistic_status()
-                )
-
-        # Add regular generator stats if available
-        if (
-            hasattr(route_builder, "semantic_candidate_generator")
-            and route_builder.semantic_candidate_generator
-        ):
-            stats["regular_generator_stats"] = (
-                route_builder.semantic_candidate_generator.get_cache_stats()
-            )
+        # Add router statistics
+        if hasattr(route_builder, "get_statistics"):
+            stats["router_statistics"] = route_builder.get_statistics()
 
         return stats
 
@@ -547,30 +571,13 @@ async def get_performance_statistics():
 
 @app.post("/api/toggle-fast-generation")
 async def toggle_fast_generation(enable_fast: bool = True):
-    """Toggle between fast and regular candidate generation."""
-    try:
-        # This could be stored in a global setting or per-session
-        # For now, we'll just return the current capability
-        route_builder = get_route_builder()
-
-        fast_available = (
-            hasattr(route_builder, "fast_candidate_generator")
-            and route_builder.fast_candidate_generator is not None
-        )
-
-        return {
-            "success": True,
-            "fast_generation_requested": enable_fast,
-            "fast_generation_available": fast_available,
-            "message": f"Fast generation {'enabled' if enable_fast and fast_available else 'disabled/unavailable'}",
-            "fallback_available": True,
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to toggle fast generation: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to toggle fast generation: {str(e)}"
-        ) from e
+    """DEPRECATED: Toggle between fast and regular candidate generation."""
+    return {
+        "success": True,
+        "message": "Fast generation toggle is deprecated. The clean system automatically optimizes performance.",
+        "deprecated": True,
+        "fast_generation_enabled": True  # Clean system is always fast
+    }
 
 
 @app.post("/api/cleanup-sessions")
@@ -590,38 +597,32 @@ async def cleanup_old_sessions(max_age_hours: float = 24.0):
 
 @app.post("/api/clear-semantic-cache")
 async def clear_semantic_candidate_cache():
-    """Clear semantic candidate cache to get fresh probabilistic results."""
+    """Clear candidate generation cache to get fresh results."""
     try:
         route_builder = get_route_builder()
 
-        # Clear cache in semantic candidate generator
-        route_builder.semantic_candidate_generator.clear_cache()
+        # Clear cache in our new clean candidate generators
+        generators_cleared = 0
+        if hasattr(route_builder, "candidate_generators"):
+            for generator in route_builder.candidate_generators.values():
+                generator.clear_cache()
+                generators_cleared += 1
 
-        # Clear fast generator cache if available
-        if (
-            hasattr(route_builder, "fast_candidate_generator")
-            and route_builder.fast_candidate_generator
-        ):
-            route_builder.fast_candidate_generator.clear_cache()
-
-        # Also clear cache keys in active sessions to force recomputation
-        cleared_sessions = 0
-        for session in route_builder.client_sessions.values():
-            session.semantic_cache_key = None
-            if hasattr(session, "fast_cache_key"):
-                session.fast_cache_key = None
-            cleared_sessions += 1
+        # Reset active sessions
+        cleared_sessions = len(route_builder.client_sessions)
+        route_builder.client_sessions.clear()
 
         return {
             "success": True,
-            "message": "Cleared all semantic candidate caches - next requests will get fresh probabilistic results",
+            "message": "Cleared all candidate generation caches - next requests will get fresh results",
+            "generators_cleared": generators_cleared,
             "active_sessions_reset": cleared_sessions,
-            "caches_cleared": ["semantic_cache", "fast_cache", "session_cache_keys"],
+            "system": "clean_candidate_generator"
         }
     except Exception as e:
-        logger.error(f"Failed to clear semantic cache: {str(e)}")
+        logger.error(f"Failed to clear candidate cache: {str(e)}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to clear semantic cache: {str(e)}"
+            status_code=500, detail=f"Failed to clear candidate cache: {str(e)}"
         ) from e
 
 
@@ -858,10 +859,112 @@ async def update_semantic_property(property_name: str, updates: dict):
         raise HTTPException(status_code=500, detail=f"Failed to update property: {str(e)}") from e
 
 
+@app.get("/api/spatial-grid/{client_id}")
+async def get_spatial_grid_data(client_id: str):
+    """Get spatial grid scoring data for visualization overlays."""
+    try:
+        route_builder = get_route_builder()
+        
+        if client_id not in route_builder.client_sessions:
+            raise HTTPException(status_code=404, detail="Client session not found")
+        
+        session = route_builder.client_sessions[client_id]
+        lat, lon = session.graph_center
+        area_key = f"{lat:.3f}_{lon:.3f}"
+        
+        if area_key not in route_builder.candidate_generators:
+            raise HTTPException(status_code=404, detail="No candidate generator available for this area")
+        
+        generator = route_builder.candidate_generators[area_key]
+        
+        # Get grid cells and their feature scores
+        grid_data = []
+        for grid_coords, cell in generator.spatial_grid.grid.items():
+            cell_features = generator.feature_database.get_cell_features(cell.center_lat, cell.center_lon)
+            if cell_features:
+                grid_data.append({
+                    "lat": cell.center_lat,
+                    "lon": cell.center_lon,
+                    "bounds": {
+                        "south": cell.center_lat - generator.spatial_grid.cell_size_degrees / 2,
+                        "west": cell.center_lon - generator.spatial_grid.cell_size_degrees / 2,
+                        "north": cell.center_lat + generator.spatial_grid.cell_size_degrees / 2,
+                        "east": cell.center_lon + generator.spatial_grid.cell_size_degrees / 2
+                    },
+                    "feature_scores": {
+                        feature_type.value: cell_features.get_feature(feature_type)
+                        for feature_type in cell_features.features.keys()
+                    },
+                    "node_count": len(cell.nodes)
+                })
+        
+        return {
+            "success": True,
+            "grid_data": grid_data,
+            "metadata": {
+                "total_cells": len(grid_data),
+                "cell_size_meters": generator.spatial_grid.cell_size_meters,
+                "area_center": {"lat": lat, "lon": lon}
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get spatial grid data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get spatial grid data: {str(e)}")
+
+
+@app.get("/api/coverage")
+async def get_coverage_info():
+    """Get information about geographic areas with available data."""
+    try:
+        # Check spatial tile storage for available areas
+        spatial_storage = get_route_builder().spatial_storage
+        
+        # Query database for available tiles
+        cursor = spatial_storage.conn.cursor()
+        cursor.execute("""
+            SELECT geohash, min_lat, min_lon, max_lat, max_lon, node_count, created_at
+            FROM tiles 
+            ORDER BY created_at DESC 
+            LIMIT 20
+        """)
+        tiles = cursor.fetchall()
+        
+        coverage_areas = []
+        for tile in tiles:
+            geohash, min_lat, min_lon, max_lat, max_lon, node_count, created_at = tile
+            center_lat = (min_lat + max_lat) / 2
+            center_lon = (min_lon + max_lon) / 2
+            
+            coverage_areas.append({
+                "center": {"lat": center_lat, "lon": center_lon},
+                "bbox": {"min_lat": min_lat, "min_lon": min_lon, "max_lat": max_lat, "max_lon": max_lon},
+                "node_count": node_count,
+                "created_at": created_at
+            })
+        
+        return {
+            "available_areas": coverage_areas,
+            "total_areas": len(coverage_areas),
+            "message": "These are the geographic areas with available routing data" if coverage_areas else "No areas with routing data available. OSM data needs to be loaded first."
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get coverage info: {e}")
+        return {
+            "available_areas": [],
+            "total_areas": 0,
+            "message": "Unable to determine coverage areas",
+            "error": str(e)
+        }
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    cache_stats = get_route_builder().get_cache_statistics()
+    cache_stats = get_route_builder().get_statistics()
 
     return {
         "status": "healthy",
@@ -886,30 +989,9 @@ async def health_check():
             "Export final route",
         ],
         "performance": {
-            "active_client_sessions": len(get_route_builder().client_sessions),
-            "legacy_cache_graphs": len(get_route_builder().graph_cache),
-            "spatial_tiles": cache_stats.get("persistent_cache", {})
-            .get("spatial_tile_storage", {})
-            .get("tile_count", 0),
-            "total_nodes": cache_stats.get("persistent_cache", {})
-            .get("spatial_tile_storage", {})
-            .get("total_nodes", 0),
-            "total_edges": cache_stats.get("persistent_cache", {})
-            .get("spatial_tile_storage", {})
-            .get("total_edges", 0),
-            "memory_cached_graphs": cache_stats.get("persistent_cache", {})
-            .get("memory_cache", {})
-            .get("memory_cached_graphs", 0),
-            "cache_size_mb": (
-                cache_stats.get("persistent_cache", {})
-                .get("spatial_tile_storage", {})
-                .get("total_size", 0)
-                or 0
-            )
-            / (1024 * 1024),
-            "coverage_km2": cache_stats.get("persistent_cache", {})
-            .get("total_coverage_estimate", {})
-            .get("estimated_area_km2", 0),
+            "active_client_sessions": cache_stats.get("active_sessions", 0),
+            "candidate_generators": cache_stats.get("candidate_generators", 0),
+            "generator_stats": cache_stats.get("generator_stats", {}),
             "semantic_overlay_cache": get_overlay_manager().get_cache_stats(),
         },
     }

@@ -26,9 +26,9 @@ class InteractiveMapEditor {
      * Initialize the map
      */
     initialize() {
-        // Initialize the map centered on San Francisco
+        // Initialize the map centered on Cologne, Germany (where we have data)
         this.map = L.map(this.containerId, {
-            center: [37.7749, -122.4194],
+            center: [50.924, 7.004],
             zoom: 13,
             zoomControl: false
         });
@@ -186,6 +186,14 @@ class InteractiveMapEditor {
      */
     async startRoutingSession(lat, lon) {
         try {
+            // Show loading animation immediately
+            if (window.loadingManager) {
+                window.loadingManager.showLoading({
+                    title: "Finding Perfect Route",
+                    description: "Analyzing natural features for your perfect route..."
+                });
+            }
+            
             // Get user preferences
             const preferences = document.getElementById('preferencesInput').value || 
                                document.getElementById('preferencesInputMobile')?.value || 
@@ -196,10 +204,15 @@ class InteractiveMapEditor {
             
             console.log('Starting session with:', { lat, lon, preferences, targetDistance });
             
-            // Start session via API - the loading animation is handled by the API client
+            // Start session via API
             const response = await window.apiClient.startSession(lat, lon, preferences, targetDistance);
             
             console.log('Session start response:', response);
+            
+            // Check if response is valid before accessing properties
+            if (!response) {
+                throw new Error('No response received from server');
+            }
             
             // The new API returns data directly without a "success" wrapper
             if (response.session_id && response.candidates) {
@@ -224,14 +237,27 @@ class InteractiveMapEditor {
                 // Update mobile UI to show distance instead of location controls
                 this.updateMobileDistanceDisplay(response.route_stats.current_distance / 1000, response.route_stats.progress * 100);
                 
+                // Hide loading animation
+                if (window.loadingManager) {
+                    window.loadingManager.hideLoading();
+                }
+                
                 // Route planning started - candidates displayed
             } else {
                 this.showMessage(`Failed to start session: ${response.message || 'Unknown error'}`, 'error');
+                // Hide loading animation on error
+                if (window.loadingManager) {
+                    window.loadingManager.hideLoading();
+                }
             }
             
         } catch (error) {
             console.error('Failed to start routing session:', error);
             this.showMessage(`Failed to start routing: ${error.message}`, 'error');
+            // Hide loading animation on error
+            if (window.loadingManager) {
+                window.loadingManager.hideLoading();
+            }
         }
     }
     
@@ -255,22 +281,25 @@ class InteractiveMapEditor {
             
             const response = await window.apiClient.addWaypoint(nodeId);
             
-            if (response.success) {
-                // Add to waypoints (get location from current_path)
-                if (response.current_path && response.current_path.length > 0) {
-                    const lastPoint = response.current_path[response.current_path.length - 1];
-                    this.waypoints.push({
-                        lat: lastPoint.lat,
-                        lon: lastPoint.lon,
-                        nodeId: nodeId
-                    });
-                }
+            if (response.waypoint_added) {
+                // Add to waypoints (use waypoint_added data)
+                const waypoint = response.waypoint_added;
+                this.waypoints.push({
+                    lat: waypoint.lat,
+                    lon: waypoint.lon,
+                    nodeId: waypoint.node_id
+                });
                 
                 // Clear previous candidates
                 this.clearCandidates();
                 
-                // Show updated route path
-                this.showRouteProgress(response.current_path);
+                // Show updated route path (use actual route coordinates)
+                if (response.route_coordinates && response.route_coordinates.length > 0) {
+                    this.showRouteProgress(response.route_coordinates);
+                } else {
+                    // Fallback to waypoints if no route coordinates
+                    this.showRouteProgress(this.waypoints);
+                }
                 
                 // Show new candidates if any
                 if (response.candidates && response.candidates.length > 0) {
@@ -279,9 +308,11 @@ class InteractiveMapEditor {
                 
                 // Update stats
                 this.updateRouteStats(response.route_stats);
+                this.showRouteStats();
                 
             } else {
-                this.showMessage(`Failed to add waypoint: ${response.message}`, 'error');
+                this.showMessage(`Failed to add waypoint: ${response.message || 'Invalid response format'}`, 'error');
+                console.log('Unexpected response format:', response);
             }
             
         } catch (error) {
@@ -318,13 +349,13 @@ class InteractiveMapEditor {
             
             const response = await window.apiClient.finalizeRoute(nodeId);
             
-            if (response.success) {
+            if (response.route_completed) {
                 // Clear candidates
                 this.clearCandidates();
                 
                 // Show final route
                 this.showFinalRoute({
-                    coordinates: response.completed_route
+                    coordinates: response.route_coordinates
                 });
                 
                 // Update final stats
@@ -344,7 +375,8 @@ class InteractiveMapEditor {
                 // Route completed successfully
                 
             } else {
-                this.showMessage(`Failed to finalize route: ${response.message}`, 'error');
+                this.showMessage(`Failed to finalize route: ${response.message || 'Invalid response format'}`, 'error');
+                console.log('Unexpected finalize response:', response);
             }
             
         } catch (error) {
@@ -381,7 +413,7 @@ class InteractiveMapEditor {
                     html: `
                         <div class="candidate-marker-content">
                             <div class="candidate-number">${index + 1}</div>
-                            <div class="candidate-distance">${(candidate.distance / 1000).toFixed(1)}km</div>
+                            <div class="candidate-distance">${(candidate.distance_from_current / 1000).toFixed(1)}km</div>
                         </div>
                     `,
                     iconSize: [60, 60],
@@ -394,7 +426,7 @@ class InteractiveMapEditor {
             const popupContent = `
                 <div class="candidate-popup">
                     <h4>Candidate ${index + 1}</h4>
-                    <p><strong>Distance:</strong> ${(candidate.distance / 1000).toFixed(1)}km</p>
+                    <p><strong>Distance:</strong> ${(candidate.distance_from_current / 1000).toFixed(1)}km</p>
                     <div class="semantic-scores">
                         <p><strong>Location Features:</strong></p>
                         ${semanticScoresHtml}
@@ -484,37 +516,44 @@ class InteractiveMapEditor {
      * Generate HTML for semantic scores display
      */
     generateSemanticScoresHtml(candidate) {
-        if (!candidate.score_breakdown) {
+        if (!candidate.feature_scores || Object.keys(candidate.feature_scores).length === 0) {
             return '<p class="no-scores">No semantic data available</p>';
         }
         
-        const scoreBreakdown = candidate.score_breakdown;
-        const overallScore = scoreBreakdown.overall || 0;
+        const featureScores = candidate.feature_scores;
+        const overallScore = candidate.value_score || 0;
         
         // Create score bars for each feature
         let html = '<div class="score-breakdown">';
         
-        const features = [
-            { key: 'forests', label: 'Forests & Parks', icon: '🌲', color: '#228B22' },
-            { key: 'rivers', label: 'Rivers & Streams', icon: '🌊', color: '#0077BE' },
-            { key: 'lakes', label: 'Lakes & Water', icon: '🏞️', color: '#4169E1' }
-        ];
+        const featureDisplayMap = {
+            'close_to_forest': { label: 'Forest Access', icon: '🌲', color: '#228B22' },
+            'close_to_water': { label: 'Water Features', icon: '🌊', color: '#0077BE' },
+            'close_to_park': { label: 'Parks & Gardens', icon: '🏞️', color: '#228B22' },
+            'path_quality': { label: 'Path Quality', icon: '🚶', color: '#8B4513' },
+            'intersection_density': { label: 'Connectivity', icon: '🛤️', color: '#696969' },
+            'elevation_variety': { label: 'Terrain Variety', icon: '⛰️', color: '#8B4513' }
+        };
         
-        features.forEach(feature => {
-            const score = scoreBreakdown[feature.key] || 0;
-            const percentage = Math.round(score * 100);
-            const scoreClass = this.getScoreClass(score);
-            
-            html += `
-                <div class="score-item">
-                    <span class="score-icon">${feature.icon}</span>
-                    <span class="score-label">${feature.label}:</span>
-                    <div class="score-bar">
-                        <div class="score-fill ${scoreClass}" style="width: ${percentage}%; background-color: ${feature.color}"></div>
-                        <span class="score-text">${percentage}%</span>
+        // Show features that have scores
+        Object.keys(featureScores).forEach(featureKey => {
+            const featureInfo = featureDisplayMap[featureKey];
+            if (featureInfo) {
+                const score = featureScores[featureKey] || 0;
+                const percentage = Math.round(score * 100);
+                const scoreClass = this.getScoreClass(score);
+                
+                html += `
+                    <div class="score-item">
+                        <span class="score-icon">${featureInfo.icon}</span>
+                        <span class="score-label">${featureInfo.label}:</span>
+                        <div class="score-bar">
+                            <div class="score-fill ${scoreClass}" style="width: ${percentage}%; background-color: ${featureInfo.color}"></div>
+                            <span class="score-text">${percentage}%</span>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
         });
         
         // Overall score
@@ -600,8 +639,16 @@ class InteractiveMapEditor {
         });
         
         if (routePath && routePath.length > 1) {
-            // Convert from {lat, lon} objects to [lat, lon] arrays for Leaflet
-            const coordinates = routePath.map(point => [point.lat, point.lon]);
+            // Handle both coordinate formats: {lat, lon} objects and [lat, lon] arrays
+            const coordinates = routePath.map(point => {
+                if (Array.isArray(point)) {
+                    // Already in [lat, lon] format
+                    return point;
+                } else {
+                    // Convert from {lat, lon} object to [lat, lon] array
+                    return [point.lat, point.lon];
+                }
+            });
             
             const routeLine = L.polyline(coordinates, {
                 color: '#626F47',

@@ -75,7 +75,7 @@ def start_backend():
     os.chdir(backend_dir)
 
     # Start backend with HTTP
-    cmd = [sys.executable, "server.py"]
+    cmd = [sys.executable, "main.py"]
 
     try:
         process = subprocess.Popen(

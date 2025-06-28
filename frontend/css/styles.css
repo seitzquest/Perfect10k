@@ -1042,6 +1042,15 @@ label {
         border-right: 1px solid var(--gray-100);
         padding: var(--space-xl);
     }
+    
+    /* Hide simple dots spinner on desktop - use only the advanced loading animation */
+    .loading-spinner {
+        display: none !important;
+    }
+    
+    .planning-overlay .loading-spinner {
+        display: none !important;
+    }
 }
 
 @media (max-width: 768px) {
@@ -1133,6 +1142,15 @@ label {
     .mobile-controls-widget {
         box-shadow: var(--shadow-lg), 0 0 0 2px rgba(0, 122, 255, 0.1);
         background: rgba(255, 255, 255, 0.98); /* More opaque on mobile */
+    }
+    
+    /* Hide simple dots spinner on mobile - use only the main loading animation */
+    .loading-spinner {
+        display: none !important;
+    }
+    
+    .planning-overlay .loading-spinner {
+        display: none !important;
     }
 }
 

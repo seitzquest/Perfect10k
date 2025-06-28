@@ -12,7 +12,7 @@ import hashlib
 
 import requests
 from loguru import logger
-from semantic_scoring import SemanticScorer, create_default_semantic_scorer
+# Removed semantic_scoring dependency - now using interpretable_scorer
 
 
 @dataclass
@@ -45,11 +45,11 @@ class SemanticOverlayManager:
         self.__post_init__()
         
     @property
-    def semantic_scorer(self) -> SemanticScorer:
-        """Get semantic scorer instance (lazy initialization)."""
-        if self._semantic_scorer is None:
-            self._semantic_scorer = create_default_semantic_scorer()
-        return self._semantic_scorer
+    def semantic_scorer(self):
+        """Get semantic scorer instance (lazy initialization) - DEPRECATED."""
+        # Semantic scoring is now handled by interpretable_scorer
+        # This is kept for compatibility but returns None
+        return None
         
     def __post_init__(self):
         """Initialize feature configurations."""
@@ -106,6 +106,25 @@ class SemanticOverlayManager:
                     "color": "#0077BE",
                     "fillColor": "#87CEEB",
                     "fillOpacity": 0.4,
+                    "weight": 1
+                }
+            },
+            "parks": {
+                "overpass_query": """
+                    [out:json][timeout:30];
+                    (
+                        way["leisure"="park"](bbox);
+                        way["leisure"="garden"](bbox);
+                        way["leisure"="nature_reserve"](bbox);
+                        relation["leisure"="park"](bbox);
+                        relation["leisure"="garden"](bbox);
+                    );
+                    out geom;
+                """,
+                "style": {
+                    "color": "#228B22",
+                    "fillColor": "#90EE90",
+                    "fillOpacity": 0.3,
                     "weight": 1
                 }
             }
@@ -225,13 +244,8 @@ class SemanticOverlayManager:
                     # Add style configuration
                     cached_data["style"] = self.feature_configs[feature_type]["style"]
                     
-                    # Load cached features into semantic scorer if not already loaded
-                    if feature_type not in self.semantic_scorer.feature_cache:
-                        try:
-                            self.semantic_scorer.load_property_features(feature_type, cached_data)
-                            logger.info(f"Loaded cached {feature_type} features into semantic scorer")
-                        except Exception as e:
-                            logger.warning(f"Failed to load cached {feature_type} into semantic scorer: {e}")
+                    # Semantic scoring is now handled by the new interpretable_scorer system
+                    logger.info(f"Loaded cached {feature_type} features for visualization")
                     
                     return cached_data
             except (json.JSONDecodeError, IOError) as e:
@@ -245,12 +259,8 @@ class SemanticOverlayManager:
             # Add style configuration
             geojson_data["style"] = self.feature_configs[feature_type]["style"]
             
-            # Load features into semantic scorer for proximity scoring
-            try:
-                self.semantic_scorer.load_property_features(feature_type, geojson_data)
-                logger.info(f"Loaded {feature_type} features into semantic scorer")
-            except Exception as e:
-                logger.warning(f"Failed to load {feature_type} into semantic scorer: {e}")
+            # Features loaded for visualization (scoring handled by interpretable_scorer)
+            logger.info(f"Loaded {feature_type} features for visualization")
             
             # Cache the data
             try:
@@ -343,21 +353,22 @@ class SemanticOverlayManager:
         """
         # Ensure features are loaded for requested properties
         if property_names is None:
-            property_names = ['forests', 'rivers', 'lakes']
+            property_names = ['forests', 'rivers', 'lakes', 'parks']
         
         # Calculate bounding box for this location (2km radius should be enough)
         bbox = self.calculate_bbox_from_center(lat, lon, 2.0)
         
         # Load features for each property if not already loaded
         for prop_name in property_names:
-            if prop_name not in self.semantic_scorer.feature_cache:
-                try:
-                    logger.info(f"Loading {prop_name} features for scoring")
-                    self.get_semantic_overlays(prop_name, bbox, use_cache=True)
-                except Exception as e:
-                    logger.warning(f"Failed to load {prop_name} for scoring: {e}")
+            try:
+                logger.info(f"Loading {prop_name} features for scoring")
+                self.get_semantic_overlays(prop_name, bbox, use_cache=True)
+            except Exception as e:
+                logger.warning(f"Failed to load {prop_name} for scoring: {e}")
         
-        return self.semantic_scorer.score_location(lat, lon, property_names)
+        # Semantic scoring is now handled by the interpretable_scorer system
+        # Return neutral scores for API compatibility (scoring handled by interpretable_scorer)
+        return {prop: 0.5 for prop in property_names}
     
     def score_multiple_locations(self, locations: List[Tuple[float, float]], 
                                property_names: Optional[List[str]] = None) -> List[Dict[str, float]]:
@@ -371,15 +382,28 @@ class SemanticOverlayManager:
         Returns:
             List of score dictionaries for each location
         """
-        return self.semantic_scorer.score_multiple_locations(locations, property_names)
+        # Semantic scoring is now handled by the interpretable_scorer system
+        # Return neutral scores for API compatibility
+        if property_names is None:
+            property_names = ['forests', 'rivers', 'lakes', 'parks']
+        
+        return [{prop: 0.5 for prop in property_names} for _ in locations]
     
     def get_semantic_property_info(self) -> Dict[str, Dict]:
         """Get information about all semantic properties"""
-        return self.semantic_scorer.get_property_info()
+        # Return basic property info for API compatibility
+        return {
+            'forests': {'description': 'Proximity to forest areas', 'type': 'semantic'},
+            'rivers': {'description': 'Proximity to rivers and streams', 'type': 'semantic'},
+            'lakes': {'description': 'Proximity to lakes and water bodies', 'type': 'semantic'},
+            'parks': {'description': 'Proximity to parks and gardens', 'type': 'semantic'}
+        }
     
     def update_semantic_property(self, property_name: str, **kwargs):
         """Update configuration for a semantic property"""
-        self.semantic_scorer.update_property_config(property_name, **kwargs)
+        # Property updates are now handled by the interpretable_scorer system
+        # This method is kept for API compatibility but does nothing
+        logger.info(f"Property update for {property_name} ignored - using interpretable_scorer system")
     
     def ensure_features_loaded_for_area(self, lat: float, lon: float, radius_km: float = 2.0):
         """
@@ -402,4 +426,10 @@ class SemanticOverlayManager:
     
     def clear_semantic_cache(self, property_name: Optional[str] = None):
         """Clear semantic scorer cache"""
-        self.semantic_scorer.clear_cache(property_name)
+        # Clear our overlay cache instead
+        if property_name:
+            logger.info(f"Clearing cache for {property_name} (overlay cache only)")
+            self.clear_cache()
+        else:
+            logger.info("Clearing all overlay cache")
+            self.clear_cache()
