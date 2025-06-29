@@ -5,6 +5,8 @@ Unified, fast candidate generator using spatial indexing and interpretable scori
 
 import math
 import time
+import random
+import numpy as np
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 import networkx as nx
@@ -52,6 +54,11 @@ class CleanCandidateGenerator:
         self.target_generation_time_ms = 50.0
         self.max_candidates_to_score = 50  # Limit for performance
         self.min_distance_between_candidates = 100.0  # meters
+        
+        # Probabilistic selection parameters for variety
+        self.enable_probabilistic_selection = True
+        self.variety_factor = 0.3  # 30% randomness, 70% score-based
+        self.min_score_threshold = 0.1  # Only consider candidates above this score
         
         # Initialization status
         self.is_initialized = False
@@ -158,10 +165,15 @@ class CleanCandidateGenerator:
         # Step 3: Score candidates using interpretable scorer
         scored_candidates = self._score_candidates(candidates_with_features, preference)
         
-        # Step 4: Apply geometric diversity filter
-        diverse_candidates = self._apply_geometric_diversity(
-            scored_candidates, from_lat, from_lon, max_candidates=3
-        )
+        # Step 4: Apply probabilistic selection and geometric diversity
+        if self.enable_probabilistic_selection:
+            diverse_candidates = self._apply_probabilistic_selection(
+                scored_candidates, from_lat, from_lon, max_candidates=3
+            )
+        else:
+            diverse_candidates = self._apply_geometric_diversity(
+                scored_candidates, from_lat, from_lon, max_candidates=3
+            )
         
         generation_time_ms = (time.time() - start_time) * 1000
         
@@ -310,6 +322,91 @@ class CleanCandidateGenerator:
         
         logger.debug(f"Scored {len(scored_candidates)} candidates")
         return scored_candidates
+    
+    def _apply_probabilistic_selection(self, scored_candidates: List[ScoredCandidate],
+                                     from_lat: float, from_lon: float,
+                                     max_candidates: int = 3) -> List[ScoredCandidate]:
+        """Apply probabilistic selection for variety while maintaining performance."""
+        if len(scored_candidates) <= max_candidates:
+            return scored_candidates
+        
+        # Step 1: Filter candidates by score threshold
+        scores = [candidate.overall_score for candidate in scored_candidates]
+        if scores:
+            score_threshold = max(self.min_score_threshold, min(scores))
+            qualified_candidates = [
+                candidate for candidate in scored_candidates 
+                if candidate.overall_score >= score_threshold
+            ]
+        else:
+            qualified_candidates = scored_candidates
+        
+        # Step 2: Create probability weights (higher score = higher probability)
+        if not qualified_candidates:
+            return scored_candidates[:max_candidates]
+        
+        scores = [candidate.overall_score for candidate in qualified_candidates]
+        min_score = min(scores)
+        max_score = max(scores)
+        
+        # Normalize scores to 0-1 range and apply variety factor
+        if max_score > min_score:
+            normalized_scores = [(score - min_score) / (max_score - min_score) for score in scores]
+        else:
+            normalized_scores = [1.0] * len(scores)
+        
+        # Mix deterministic (score-based) and random probabilities
+        random_weights = [random.random() for _ in range(len(qualified_candidates))]
+        final_weights = [
+            (1 - self.variety_factor) * score + self.variety_factor * rand
+            for score, rand in zip(normalized_scores, random_weights)
+        ]
+        
+        # Step 3: Sample candidates based on weights with geometric diversity
+        selected = []
+        available_candidates = list(enumerate(qualified_candidates))
+        available_weights = final_weights.copy()
+        
+        min_angle_separation = 45  # degrees
+        
+        while len(selected) < max_candidates and available_candidates:
+            # Weighted random selection
+            if sum(available_weights) > 0:
+                idx = np.random.choice(len(available_candidates), p=np.array(available_weights)/sum(available_weights))
+            else:
+                idx = random.randint(0, len(available_candidates) - 1)
+            
+            candidate_idx, candidate = available_candidates[idx]
+            
+            # Check angular separation from already selected candidates
+            if not selected:
+                selected.append(candidate)
+            else:
+                candidate_angle = self._calculate_bearing(from_lat, from_lon, candidate.lat, candidate.lon)
+                
+                too_close = False
+                for selected_candidate in selected:
+                    selected_angle = self._calculate_bearing(from_lat, from_lon, selected_candidate.lat, selected_candidate.lon)
+                    angle_diff = abs(candidate_angle - selected_angle)
+                    angle_diff = min(angle_diff, 360 - angle_diff)
+                    
+                    if angle_diff < min_angle_separation:
+                        too_close = True
+                        break
+                
+                if not too_close:
+                    selected.append(candidate)
+            
+            # Remove selected candidate from available pool
+            available_candidates.pop(idx)
+            available_weights.pop(idx)
+            
+            # If we can't find enough diverse candidates, relax the angle constraint
+            if len(available_candidates) > 0 and len(selected) < max_candidates and len(available_candidates) < max_candidates - len(selected):
+                min_angle_separation = max(20, min_angle_separation - 10)
+        
+        logger.debug(f"Probabilistic selection: {len(selected)} candidates from {len(qualified_candidates)} qualified")
+        return selected
     
     def _apply_geometric_diversity(self, scored_candidates: List[ScoredCandidate],
                                  from_lat: float, from_lon: float,
