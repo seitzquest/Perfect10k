@@ -26,28 +26,6 @@ class Perfect10kApp {
         }
     }
     
-    /**
-     * Show loading bar with optional text
-     */
-    showLoading(text = 'Loading...') {
-        const loadingBar = document.getElementById('loadingBar');
-        if (loadingBar) {
-            loadingBar.classList.remove('hidden');
-        }
-        
-        // Update status text if provided
-        this.updateStatus(text, 'info');
-    }
-    
-    /**
-     * Hide loading bar
-     */
-    hideLoading() {
-        const loadingBar = document.getElementById('loadingBar');
-        if (loadingBar) {
-            loadingBar.classList.add('hidden');
-        }
-    }
     
     /**
      * Set up the main application
@@ -185,7 +163,7 @@ class Perfect10kApp {
         
         // Location input and current location
         document.getElementById('useCurrentLocation').addEventListener('click', () => {
-            this.showLoading('Getting your location...');
+            this.updateStatus('Getting your location...', 'info');
             this.mapEditor.requestUserLocation();
         });
         
@@ -193,7 +171,7 @@ class Perfect10kApp {
         const useCurrentLocationMobile = document.getElementById('useCurrentLocationMobile');
         if (useCurrentLocationMobile) {
             useCurrentLocationMobile.addEventListener('click', () => {
-                this.showLoading('Getting your location...');
+                this.updateStatus('Getting your location...', 'info');
                 this.mapEditor.requestUserLocation();
             });
         }
@@ -789,19 +767,6 @@ ${trackPoints}        </trkseg>
         this.mapEditor.showMessage(text, type);
     }
     
-    /**
-     * Show loading bar
-     */
-    showLoading() {
-        document.getElementById('loadingBar').classList.remove('hidden');
-    }
-    
-    /**
-     * Hide loading bar
-     */
-    hideLoading() {
-        document.getElementById('loadingBar').classList.add('hidden');
-    }
     
     /**
      * Set application state and update UI visibility

@@ -63,10 +63,13 @@ class ApiClient {
                 
                 // Start loading animation and poll for results (only if requested)
                 if (showLoading) {
-                    window.loadingManager.showLoading({
-                        title: "Finding Perfect Route",
-                        description: `Analyzing natural features for ${preference} routes...`
-                    });
+                    window.loadingManager.showMinimalisticLoading();
+                    
+                    // Update the text to match our specific use case
+                    const titleEl = document.getElementById('loading-title');
+                    const descriptionEl = document.getElementById('loading-description');
+                    if (titleEl) titleEl.textContent = "Finding Perfect Route";
+                    if (descriptionEl) descriptionEl.textContent = `Analyzing natural features for ${preference} routes...`;
                 }
                 
                 const response = await this.pollJobUntilComplete(jobResponse.job_id);
@@ -109,6 +112,7 @@ class ApiClient {
                     {
                         method: 'POST',
                         body: requestData,
+                        minimalistic: true,
                         loadingOptions: {
                             title: "Finding Perfect Route",
                             description: `Analyzing natural features for ${preference} routes...`

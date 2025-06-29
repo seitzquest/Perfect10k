@@ -188,10 +188,13 @@ class InteractiveMapEditor {
         try {
             // Show loading animation immediately
             if (window.loadingManager) {
-                window.loadingManager.showLoading({
-                    title: "Finding Perfect Route",
-                    description: "Analyzing natural features for your perfect route..."
-                });
+                window.loadingManager.showMinimalisticLoading();
+                
+                // Update the text to match our specific use case
+                const titleEl = document.getElementById('loading-title');
+                const descriptionEl = document.getElementById('loading-description');
+                if (titleEl) titleEl.textContent = "Finding Perfect Route";
+                if (descriptionEl) descriptionEl.textContent = "Analyzing natural features for your perfect route...";
             }
             
             // Get user preferences
@@ -274,10 +277,6 @@ class InteractiveMapEditor {
                 window.loadingManager.showMinimalisticLoading();
             }
             
-            // Also show basic loading indicator
-            if (window.perfect10kApp) {
-                window.perfect10kApp.showLoading();
-            }
             
             const response = await window.apiClient.addWaypoint(nodeId);
             
@@ -297,8 +296,12 @@ class InteractiveMapEditor {
                 if (response.route_coordinates && response.route_coordinates.length > 0) {
                     this.showRouteProgress(response.route_coordinates);
                 } else {
-                    // Fallback to waypoints if no route coordinates
-                    this.showRouteProgress(this.waypoints);
+                    // Log warning when route coordinates are missing
+                    console.warn('Route coordinates not available in response - route may not follow proper network edges');
+                    console.log('Response data:', response);
+                    
+                    // Don't show route progress without proper coordinates to avoid "air connections"
+                    // The route will be shown when proper coordinates are available
                 }
                 
                 // Show new candidates if any
@@ -323,9 +326,6 @@ class InteractiveMapEditor {
             if (window.loadingManager) {
                 window.loadingManager.hideLoading();
             }
-            if (window.perfect10kApp) {
-                window.perfect10kApp.hideLoading();
-            }
         }
     }
     
@@ -342,10 +342,6 @@ class InteractiveMapEditor {
                 window.loadingManager.showMinimalisticLoading();
             }
             
-            // Also show basic loading indicator
-            if (window.perfect10kApp) {
-                window.perfect10kApp.showLoading();
-            }
             
             const response = await window.apiClient.finalizeRoute(nodeId);
             
@@ -386,9 +382,6 @@ class InteractiveMapEditor {
             // Hide all loading indicators
             if (window.loadingManager) {
                 window.loadingManager.hideLoading();
-            }
-            if (window.perfect10kApp) {
-                window.perfect10kApp.hideLoading();
             }
         }
     }
@@ -842,9 +835,6 @@ class InteractiveMapEditor {
     requestUserLocation() {
         if (!navigator.geolocation) {
             this.showMessage('Geolocation not supported by this browser', 'error');
-            if (window.perfect10kApp) {
-                window.perfect10kApp.hideLoading();
-            }
             return;
         }
         
@@ -858,9 +848,8 @@ class InteractiveMapEditor {
                 this.userLocation = { lat, lon };
                 this.setLocationAndUnblur(lat, lon);
                 
-                // Hide loading and show success
+                // Show success and set location
                 if (window.perfect10kApp) {
-                    window.perfect10kApp.hideLoading();
                     window.perfect10kApp.setLocation(lat, lon);
                     window.perfect10kApp.showMessage('Location found', 'success');
                 }
@@ -868,7 +857,6 @@ class InteractiveMapEditor {
             (error) => {
                 console.warn('Location access failed:', error);
                 if (window.perfect10kApp) {
-                    window.perfect10kApp.hideLoading();
                     window.perfect10kApp.showMessage('Could not get location. Please try again or enter manually.', 'error');
                 }
             },

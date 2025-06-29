@@ -472,12 +472,20 @@ class CleanRouter:
         }
     
     def _get_graph_for_location(self, lat: float, lon: float) -> nx.MultiGraph:
-        """Get graph data for a location using spatial tile storage."""
+        """Get graph data for a location using spatial tile storage with automatic OSM loading."""
         try:
-            # Use spatial tile storage to get graph
-            return self.spatial_storage.load_graph_for_area(lat, lon, radius_m=5000)
+            # Use spatial tile storage to get graph (now auto-loads OSM with geometry if missing)
+            graph = self.spatial_storage.load_graph_for_area(lat, lon, radius_m=5000)
+            
+            if graph is None:
+                logger.error(f"Failed to load or create graph data for ({lat:.6f}, {lon:.6f})")
+                return None
+            
+            logger.info(f"Successfully loaded graph with {len(graph.nodes)} nodes for ({lat:.6f}, {lon:.6f})")
+            return graph
+            
         except Exception as e:
-            logger.error(f"Failed to load graph for ({lat:.6f}, {lon:.6f}): {e}")
+            logger.error(f"Exception while loading graph for ({lat:.6f}, {lon:.6f}): {e}")
             return None
     
     def _find_nearest_node(self, graph: nx.MultiGraph, lat: float, lon: float) -> Optional[int]:
@@ -688,6 +696,8 @@ class CleanRouter:
             return []
         
         route_coordinates = []
+        edges_with_geometry = 0
+        total_edges = len(path) - 1
         
         for i in range(len(path) - 1):
             node1, node2 = path[i], path[i + 1]
@@ -717,6 +727,7 @@ class CleanRouter:
                     edge_geom = edge_data.get('geometry')
                 
                 if edge_geom is not None:
+                    edges_with_geometry += 1
                     # Extract coordinates from geometry (Shapely LineString)
                     try:
                         # Get coordinate pairs from the LineString
@@ -744,7 +755,13 @@ class CleanRouter:
                     node2_data = graph.nodes[node2]
                     route_coordinates.append({"lat": node2_data['y'], "lon": node2_data['x']})
         
-        logger.debug(f"Extracted {len(route_coordinates)} coordinate points from {len(path)} path nodes")
+        geometry_percentage = (edges_with_geometry / total_edges * 100) if total_edges > 0 else 0
+        logger.info(f"Route geometry: {edges_with_geometry}/{total_edges} edges have geometry ({geometry_percentage:.1f}%)")
+        logger.info(f"Extracted {len(route_coordinates)} coordinate points from {len(path)} path nodes")
+        
+        if geometry_percentage < 50:
+            logger.warning(f"Low geometry coverage ({geometry_percentage:.1f}%) - route may show straight line segments")
+        
         return route_coordinates
     
     def _candidate_to_dict(self, candidate: RouteCandidate) -> Dict[str, Any]:

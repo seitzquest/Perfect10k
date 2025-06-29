@@ -97,14 +97,19 @@ class LoadingAnimationManager {
                 }
             }
             
-            /* Hide dots loading on desktop (show only text) */
+            /* Show dots loading on desktop for minimalistic mode */
             @media (min-width: 641px) {
-                .loading-spinner {
+                .loading-overlay:not(.minimalistic) .loading-spinner {
                     display: none !important;
                 }
                 
-                .loading-header {
+                .loading-overlay:not(.minimalistic) .loading-header {
                     gap: 0;
+                }
+                
+                /* Force dots to show in minimalistic mode */
+                .loading-overlay.minimalistic .loading-spinner {
+                    display: flex !important;
                 }
             }
             
@@ -301,6 +306,7 @@ class LoadingAnimationManager {
 
     hideLoading() {
         this.loadingContainer.classList.add('hidden');
+        this.loadingContainer.classList.remove('minimalistic');
         if (this.currentAnimation) {
             clearInterval(this.currentAnimation);
             this.currentAnimation = null;
@@ -422,6 +428,7 @@ class LoadingAnimationManager {
     showMinimalisticLoading() {
         // Show only the header with minimal content
         this.loadingContainer.classList.remove('hidden');
+        this.loadingContainer.classList.add('minimalistic');
         
         // Hide progress bar, phases, and details for minimalistic view
         const progressSection = this.loadingContainer.querySelector('.loading-progress');
@@ -475,11 +482,24 @@ class LoadingAnimationManager {
             method = 'POST', 
             body = null,
             showLoading = true,
-            loadingOptions = {}
+            loadingOptions = {},
+            minimalistic = false
         } = options;
 
         if (showLoading) {
-            this.showLoading(loadingOptions);
+            if (minimalistic) {
+                this.showMinimalisticLoading();
+                
+                // Update text if provided in loadingOptions
+                if (loadingOptions.title || loadingOptions.description) {
+                    const titleEl = document.getElementById('loading-title');
+                    const descriptionEl = document.getElementById('loading-description');
+                    if (titleEl && loadingOptions.title) titleEl.textContent = loadingOptions.title;
+                    if (descriptionEl && loadingOptions.description) descriptionEl.textContent = loadingOptions.description;
+                }
+            } else {
+                this.showLoading(loadingOptions);
+            }
         }
 
         try {

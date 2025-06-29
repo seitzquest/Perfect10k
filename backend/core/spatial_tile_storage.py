@@ -161,14 +161,25 @@ class SpatialTileStorage:
     def load_graph_for_area(self, lat: float, lon: float, radius_m: float = 8000) -> Optional[nx.MultiGraph]:
         """
         Load a graph covering the requested area from tiles.
+        If no tiles exist, automatically downloads OSM data with geometry.
         
         Returns:
             Combined graph from all covering tiles, or None if not available
         """
         covering_tiles = self.get_covering_tiles(lat, lon, radius_m)
         
-        if not covering_tiles:
-            return None
+        # Check if any of the covering tiles actually exist
+        existing_tiles = []
+        for geohash in covering_tiles:
+            if self._tile_exists(geohash):
+                existing_tiles.append(geohash)
+        
+        if not existing_tiles:
+            logger.info(f"No existing tiles found for area ({lat:.6f}, {lon:.6f}), loading from OSM with geometry")
+            return self._load_osm_and_create_tiles(lat, lon, radius_m)
+        
+        # Use only existing tiles for loading
+        covering_tiles = existing_tiles
         
         # Load and combine graphs from all covering tiles
         combined_graph = None
@@ -208,6 +219,77 @@ class SpatialTileStorage:
             return combined_graph
         
         return None
+    
+    def _load_osm_and_create_tiles(self, lat: float, lon: float, radius_m: float = 8000) -> Optional[nx.MultiGraph]:
+        """
+        Load OSM data with geometry and create tiles automatically.
+        This ensures new areas always have proper geometry data.
+        """
+        try:
+            import osmnx as ox
+            
+            logger.info(f"Loading OSM data with geometry for ({lat:.6f}, {lon:.6f}), radius={radius_m}m")
+            
+            # Load with proper parameters to ensure route visualization with geometry
+            graph = ox.graph_from_point(
+                (lat, lon), 
+                dist=radius_m,
+                network_type='walk',
+                retain_all=True,
+                truncate_by_edge=True,
+                simplify=False  # Keep intermediate nodes for better geometry
+            )
+            
+            # Add geometry data to edges (required for curved route visualization)
+            logger.info("Adding geometry data to edges...")
+            try:
+                # Convert to GeoDataFrames to get geometries
+                gdf_nodes, gdf_edges = ox.graph_to_gdfs(graph)
+                
+                # Add geometry from GeoDataFrame back to graph edges
+                for idx, edge_data in gdf_edges.iterrows():
+                    u, v, key = idx
+                    if hasattr(edge_data, 'geometry') and edge_data.geometry is not None:
+                        graph[u][v][key]['geometry'] = edge_data.geometry
+                        
+            except Exception as e:
+                logger.warning(f"Could not add detailed geometry: {e}")
+                # Fallback: create simple line geometries between nodes
+                try:
+                    from shapely.geometry import LineString
+                    for u, v, key, edge_data in graph.edges(keys=True, data=True):
+                        if 'geometry' not in edge_data:
+                            u_coord = (graph.nodes[u]['x'], graph.nodes[u]['y'])
+                            v_coord = (graph.nodes[v]['x'], graph.nodes[v]['y'])
+                            edge_data['geometry'] = LineString([u_coord, v_coord])
+                except Exception as e2:
+                    logger.warning(f"Could not create fallback geometry: {e2}")
+            
+            logger.info(f"Loaded OSM graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
+            
+            # Verify geometry data
+            geometry_count = 0
+            total_edges = 0
+            for u, v, data in graph.edges(data=True):
+                total_edges += 1
+                if 'geometry' in data and data['geometry'] is not None:
+                    geometry_count += 1
+            
+            geometry_percentage = (geometry_count / total_edges * 100) if total_edges > 0 else 0
+            logger.info(f"Geometry coverage: {geometry_count}/{total_edges} edges ({geometry_percentage:.1f}%)")
+            
+            # Store as tiles for future use
+            stored_tiles = self.store_graph_tiles(graph, lat, lon, radius_m, set())
+            logger.info(f"Stored graph as {len(stored_tiles)} tiles with geometry data")
+            
+            return graph
+            
+        except ImportError:
+            logger.error("osmnx not available - cannot load OSM data")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to load OSM data: {e}")
+            return None
     
     def store_graph_tiles(self, graph: nx.MultiGraph, center_lat: float, center_lon: float, 
                          radius_m: float = 8000, semantic_features: Set[str] = None) -> List[str]:
@@ -275,7 +357,7 @@ class SpatialTileStorage:
         return stored_tiles
     
     def _create_tile_subgraph(self, full_graph: nx.MultiGraph, nodes: Set, edges: Set) -> nx.MultiGraph:
-        """Create a subgraph for a tile."""
+        """Create a subgraph for a tile with geometry preservation."""
         tile_graph = nx.MultiGraph()
         
         # Add nodes with their data
@@ -283,11 +365,23 @@ class SpatialTileStorage:
             if node_id in full_graph.nodes:
                 tile_graph.add_node(node_id, **full_graph.nodes[node_id])
         
-        # Add edges with their data
+        # Add edges with their data, ensuring geometry is preserved
+        geometry_preserved = 0
+        total_edges = 0
+        
         for node1, node2, edge_data_tuple in edges:
+            total_edges += 1
             edge_data = dict(edge_data_tuple)
+            
+            # Explicitly check for and preserve geometry data
+            if 'geometry' in edge_data and edge_data['geometry'] is not None:
+                geometry_preserved += 1
+                
             if node1 in tile_graph.nodes and node2 in tile_graph.nodes:
                 tile_graph.add_edge(node1, node2, **edge_data)
+        
+        if total_edges > 0:
+            logger.debug(f"Tile subgraph: {geometry_preserved}/{total_edges} edges have geometry ({geometry_preserved/total_edges*100:.1f}%)")
         
         return tile_graph
     
@@ -340,6 +434,11 @@ class SpatialTileStorage:
         except Exception as e:
             logger.error(f"Failed to store tile {geohash}: {e}")
             return None
+    
+    def _tile_exists(self, geohash: str) -> bool:
+        """Check if a tile with the given geohash exists."""
+        tile_file = self.storage_dir / f"tile_{geohash}.pickle"
+        return tile_file.exists()
     
     def _load_tile_graph(self, geohash: str) -> Optional[nx.MultiGraph]:
         """Load a single tile graph from disk."""
