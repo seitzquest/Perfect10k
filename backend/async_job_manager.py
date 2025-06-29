@@ -221,8 +221,8 @@ class AsyncJobManager:
     def submit_background_job(self, job_type: str, job_function: Callable, *args, **kwargs) -> str:
         """Submit a low-priority background job for cache warming."""
         return self.submit_job(
-            job_type=f"background_{job_type}",
-            job_function=job_function,
+            f"background_{job_type}",
+            job_function,
             *args,
             priority=JobPriority.LOW,
             **kwargs
@@ -512,8 +512,7 @@ async def submit_cache_warming_job(area_lat: float, area_lon: float,
         "cache_warm_area",
         warming_func,
         area_lat,
-        area_lon,
-        **kwargs
+        area_lon
     )
 
 

@@ -526,8 +526,7 @@ class CleanRouter:
             "start_route_background",
             self._background_route_generation,
             client_id, lat, lon, preference, target_distance,
-            priority=JobPriority.HIGH,
-            client_id=client_id
+            priority=JobPriority.HIGH
         )
         
         # Step 3: Start cache warming in parallel
@@ -683,11 +682,10 @@ class CleanRouter:
             if cache_manager.get_cached_graph(warm_lat, warm_lon):
                 continue  # Skip if already cached
             
-            # Submit warming job
+            # Submit warming job  
             job_id = await submit_cache_warming_job(
                 warm_lat, warm_lon,
-                self._warm_area_cache,
-                lat=warm_lat, lon=warm_lon
+                self._warm_area_cache
             )
             warming_jobs.append(job_id)
         

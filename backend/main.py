@@ -198,29 +198,49 @@ async def start_session(request_data: StartRouteRequest, request: Request):
 
 @app.post("/api/start-session-async")
 async def start_session_async(request_data: StartRouteRequest, request: Request):
-    """Async session start - returns immediate result since clean system is fast."""
-    logger.info("Async endpoint called - using fast sync processing")
+    """Async session start with immediate cache response or background processing."""
+    logger.info("Async endpoint called - using proper async processing")
     
-    # Clean system is fast enough - get sync result and wrap in async format
     try:
-        sync_result = await start_session(request_data, request)
+        route_builder = get_route_builder()
+        client_ip = request.client.host if request.client else "unknown"
+        client_id = f"{client_ip}_{int(time.time() * 1000) % 10000}"
         
-        # Return format that frontend expects - session_id at top level
-        return {
-            "job_id": sync_result.get("session_id", "immediate"),
-            "status": "completed", 
-            "result": {
-                # Frontend expects session_id at top level of result object
-                "session_id": sync_result.get("session_id"),
-                "client_id": sync_result.get("session_id"),  # Fallback field
-                "candidates": sync_result.get("candidates", []),
-                "route_stats": sync_result.get("route_stats", {}),
-                "start_location": sync_result.get("start_location", {}),
-                "generation_info": sync_result.get("generation_info", {})
-            },
-            "message": "Route generation completed immediately",
-            "completed_at": time.time()
-        }
+        # Use proper async method from CleanRouter
+        async_result = await route_builder.start_route_async(
+            client_id=client_id,
+            lat=request_data.lat,
+            lon=request_data.lon,
+            preference=request_data.preference,
+            target_distance=request_data.target_distance
+        )
+        
+        # Check if this is an immediate cached response or background job
+        if async_result.get('response_type') == 'cached':
+            # Immediate response from cache
+            return {
+                "job_id": async_result.get("session_id", "immediate"),
+                "status": "completed",
+                "result": {
+                    "session_id": async_result.get("session_id"),
+                    "client_id": async_result.get("session_id"),
+                    "candidates": async_result.get("candidates", []),
+                    "route_stats": async_result.get("route_stats", {}),
+                    "start_location": async_result.get("start_location", {}),
+                    "generation_info": async_result.get("generation_info", {})
+                },
+                "message": "Route generation completed from cache",
+                "completed_at": time.time()
+            }
+        else:
+            # Background processing job
+            return {
+                "job_id": async_result.get("job_id"),
+                "status": "processing",
+                "message": "Route generation started in background",
+                "estimated_completion_ms": async_result.get("estimated_completion_ms", 30000),
+                "polling_interval_ms": async_result.get("polling_interval_ms", 1000)
+            }
         
     except Exception as e:
         logger.error(f"Failed to start async route: {str(e)}")
@@ -234,12 +254,11 @@ async def start_session_async(request_data: StartRouteRequest, request: Request)
 
 @app.get("/api/job-status/{job_id}")
 async def get_job_status(job_id: str):
-    """Get status of a job - for immediate completion jobs, return completed status."""
+    """Get status of a background job."""
     try:
-        # For the clean system, jobs complete immediately
-        # Check if this is a valid session ID
         route_builder = get_route_builder()
         
+        # Handle special cases
         if job_id == "failed":
             return {
                 "job_id": job_id,
@@ -253,8 +272,15 @@ async def get_job_status(job_id: str):
                 "status": "completed",
                 "message": "Job completed immediately - no polling needed"
             }
+        
+        # Check with async job manager
+        job_status = await route_builder.get_job_status_async(job_id)
+        
+        if job_status:
+            return job_status
+        
+        # Fallback: check if it's a completed session
         elif job_id in route_builder.client_sessions:
-            # Valid session exists - job is completed
             session = route_builder.client_sessions[job_id]
             return {
                 "job_id": job_id,
