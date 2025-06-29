@@ -15,6 +15,7 @@ from loguru import logger
 from spatial_grid import SpatialGrid
 from feature_database import FeatureDatabase, FeatureType
 from interpretable_scorer import InterpretableScorer, ScoredCandidate
+from smart_cache_manager import cache_manager
 
 
 @dataclass
@@ -34,20 +35,22 @@ class CleanCandidateGenerator:
     for sub-50ms candidate retrieval with clear explanations.
     """
     
-    def __init__(self, graph: nx.MultiGraph, semantic_overlay_manager=None):
+    def __init__(self, graph: nx.MultiGraph, semantic_overlay_manager=None, area_key=None):
         """
         Initialize the clean candidate generator.
         
         Args:
             graph: NetworkX graph with node/edge data
             semantic_overlay_manager: Optional semantic overlay manager for nature features
+            area_key: Optional area key for cache persistence
         """
         self.graph = graph
         self.semantic_overlay_manager = semantic_overlay_manager
+        self.area_key = area_key or "default"
         
-        # Core components
-        self.spatial_grid = SpatialGrid(cell_size_meters=200.0)
-        self.feature_database = FeatureDatabase(self.spatial_grid)
+        # Core components - will be loaded from cache if available
+        self.spatial_grid = None
+        self.feature_database = None
         self.scorer = InterpretableScorer()
         
         # Performance parameters
@@ -63,11 +66,11 @@ class CleanCandidateGenerator:
         # Initialization status
         self.is_initialized = False
         
-        logger.info("Initialized clean candidate generator")
+        logger.info(f"Initialized clean candidate generator for area {self.area_key}")
     
     def initialize(self) -> bool:
         """
-        Initialize spatial grid and compute features.
+        Initialize spatial grid and compute features with cache support.
         
         Returns:
             True if initialization successful, False otherwise
@@ -77,10 +80,32 @@ class CleanCandidateGenerator:
             return True
         
         start_time = time.time()
-        logger.info("Initializing clean candidate generator...")
+        logger.info(f"Initializing clean candidate generator for area {self.area_key}...")
         
         try:
+            # Try to load from cache first
+            cached_grid = cache_manager.get_spatial_grid(self.area_key)
+            cached_cell_features = cache_manager.get_cell_features(self.area_key)
+            
+            if cached_grid and cached_cell_features:
+                logger.info("Loading spatial grid and features from cache")
+                self.spatial_grid = cached_grid
+                self.feature_database = FeatureDatabase(self.spatial_grid)
+                self.feature_database.cell_features = cached_cell_features
+                
+                cache_time = time.time() - start_time
+                logger.info(f"Loaded from cache in {cache_time:.3f}s")
+                
+                self.is_initialized = True
+                return True
+            
+            # Cache miss - build from scratch
+            logger.info("Cache miss - building spatial grid and features from scratch")
+            
             # Build spatial grid from graph
+            self.spatial_grid = SpatialGrid(cell_size_meters=200.0)
+            self.feature_database = FeatureDatabase(self.spatial_grid)
+            
             self.spatial_grid.add_nodes_from_graph(self.graph)
             grid_time = time.time() - start_time
             
@@ -91,11 +116,18 @@ class CleanCandidateGenerator:
             )
             feature_time = time.time() - feature_start
             
+            # Store in cache for next time
+            cache_start = time.time()
+            cache_manager.store_spatial_grid(self.area_key, self.spatial_grid)
+            cache_manager.store_cell_features(self.area_key, self.feature_database.cell_features)
+            cache_time = time.time() - cache_start
+            
             total_time = time.time() - start_time
             
             logger.info(f"Initialization complete in {total_time:.2f}s:")
             logger.info(f"  - Spatial grid: {grid_time:.2f}s")
             logger.info(f"  - Features: {feature_time:.2f}s ({cells_processed} cells)")
+            logger.info(f"  - Cache storage: {cache_time:.3f}s")
             
             self.is_initialized = True
             return True

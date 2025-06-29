@@ -92,6 +92,7 @@ class SmartCacheManager:
         self.scoring_weights_cache: Dict[str, CachedScoringWeights] = {}
         self.candidate_pools_cache: Dict[str, CandidatePool] = {}
         self.graph_cache: Dict[str, nx.MultiGraph] = {}
+        self.spatial_grid_cache: Dict[str, Any] = {}  # For SpatialGrid objects
         
         # Cache statistics
         self.cache_hits = defaultdict(int)
@@ -129,6 +130,12 @@ class SmartCacheManager:
                 return graph
             except Exception as e:
                 logger.warning(f"Failed to load cached graph: {e}")
+                # Remove corrupted cache file
+                try:
+                    graph_file.unlink()
+                    logger.info(f"🧹 Removed corrupted cache file: {graph_file.name}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up corrupted cache file: {cleanup_error}")
         
         self.cache_misses['graph'] += 1
         logger.debug(f"📤 Graph cache MISS for {area_key}")
@@ -142,15 +149,29 @@ class SmartCacheManager:
         # Store in memory
         self.graph_cache[area_key] = graph
         
-        # Store on disk asynchronously
+        # Store on disk asynchronously with thread safety
         def save_to_disk():
+            # Ensure cache directory exists
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            
             graph_file = self.cache_dir / f"graph_{area_key}.pkl"
+            temp_file = self.cache_dir / f"graph_{area_key}.pkl.tmp"
             try:
-                with open(graph_file, 'wb') as f:
-                    pickle.dump(graph, f)
-                logger.info(f"💾 Graph saved to disk cache for {area_key}")
+                # Create a copy of the graph to avoid "dictionary changed size" errors
+                graph_copy = graph.copy()
+                
+                # Write to temporary file first to avoid corruption
+                with open(temp_file, 'wb') as f:
+                    pickle.dump(graph_copy, f)
+                
+                # Atomic rename to final location
+                temp_file.rename(graph_file)
+                logger.debug(f"💾 Graph saved to disk cache for {area_key}")
             except Exception as e:
                 logger.error(f"Failed to save graph to disk: {e}")
+                # Clean up temp file if it exists
+                if temp_file.exists():
+                    temp_file.unlink()
         
         # Run in background thread
         threading.Thread(target=save_to_disk, daemon=True).start()
@@ -173,6 +194,21 @@ class SmartCacheManager:
         
         logger.debug(f"📥 Node features: {len(result)}/{len(node_ids)} cached for {area_key}")
         return result
+    
+    def get_all_node_features(self, area_key: str) -> Optional[Dict[int, CachedNodeFeatures]]:
+        """Get all cached node features for an area (used by CleanCandidateGenerator)."""
+        if area_key not in self.node_features_cache:
+            self._load_node_features_from_disk(area_key)
+        
+        area_features = self.node_features_cache.get(area_key, {})
+        if area_features:
+            self.cache_hits['node_features'] += 1
+            logger.debug(f"✓ All node features cache hit for {area_key} ({len(area_features)} features)")
+            return area_features
+        else:
+            self.cache_misses['node_features'] += 1
+            logger.debug(f"✗ All node features cache miss for {area_key}")
+            return None
     
     @profile_function("cache_store_node_features")
     def store_node_features(self, area_key: str, features: Dict[int, CachedNodeFeatures]):
@@ -418,6 +454,126 @@ class SmartCacheManager:
             logger.debug(f"💾 Saved node features to disk for {area_key}")
         except Exception as e:
             logger.error(f"Failed to save node features to disk: {e}")
+    
+    def get_spatial_grid(self, area_key: str) -> Optional[Any]:
+        """Get cached spatial grid for an area."""
+        # Check memory cache first
+        if area_key in self.spatial_grid_cache:
+            self.cache_hits['spatial_grid'] += 1
+            logger.debug(f"✓ Spatial grid cache hit for {area_key}")
+            return self.spatial_grid_cache[area_key]
+        
+        # Check disk cache
+        grid_file = self.cache_dir / f"grid_{area_key}.pkl"
+        if grid_file.exists():
+            try:
+                with open(grid_file, 'rb') as f:
+                    spatial_grid = pickle.load(f)
+                self.spatial_grid_cache[area_key] = spatial_grid
+                self.cache_hits['spatial_grid'] += 1
+                logger.debug(f"✓ Spatial grid loaded from disk for {area_key}")
+                return spatial_grid
+            except Exception as e:
+                logger.error(f"Failed to load spatial grid from disk: {e}")
+                # Remove corrupted cache file
+                try:
+                    grid_file.unlink()
+                    logger.info(f"🧹 Removed corrupted spatial grid cache: {grid_file.name}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up corrupted spatial grid cache: {cleanup_error}")
+        
+        self.cache_misses['spatial_grid'] += 1
+        logger.debug(f"✗ Spatial grid cache miss for {area_key}")
+        return None
+    
+    def store_spatial_grid(self, area_key: str, spatial_grid: Any):
+        """Store spatial grid in cache."""
+        self.spatial_grid_cache[area_key] = spatial_grid
+        
+        # Save to disk in background with thread safety
+        def save_to_disk():
+            # Ensure cache directory exists
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            
+            grid_file = self.cache_dir / f"grid_{area_key}.pkl"
+            temp_file = self.cache_dir / f"grid_{area_key}.pkl.tmp"
+            try:
+                # Write to temporary file first to avoid corruption
+                with open(temp_file, 'wb') as f:
+                    pickle.dump(spatial_grid, f)
+                
+                # Atomic rename to final location
+                temp_file.rename(grid_file)
+                logger.debug(f"💾 Spatial grid saved to disk for {area_key}")
+            except Exception as e:
+                logger.error(f"Failed to save spatial grid to disk: {e}")
+                # Clean up temp file if it exists
+                if temp_file.exists():
+                    temp_file.unlink()
+        
+        # Use thread to avoid blocking
+        threading.Thread(target=save_to_disk, daemon=True).start()
+    
+    def get_cell_features(self, area_key: str) -> Optional[Dict]:
+        """Get cached cell features for an area (FeatureDatabase format)."""
+        # Check memory cache first
+        cell_cache_key = f"cells_{area_key}"
+        if cell_cache_key in self.spatial_grid_cache:
+            self.cache_hits['cell_features'] += 1
+            logger.debug(f"✓ Cell features cache hit for {area_key}")
+            return self.spatial_grid_cache[cell_cache_key]
+        
+        # Check disk cache
+        cells_file = self.cache_dir / f"cells_{area_key}.pkl"
+        if cells_file.exists():
+            try:
+                with open(cells_file, 'rb') as f:
+                    cell_features = pickle.load(f)
+                self.spatial_grid_cache[cell_cache_key] = cell_features
+                self.cache_hits['cell_features'] += 1
+                logger.debug(f"✓ Cell features loaded from disk for {area_key}")
+                return cell_features
+            except Exception as e:
+                logger.error(f"Failed to load cell features from disk: {e}")
+                # Remove corrupted cache file
+                try:
+                    cells_file.unlink()
+                    logger.info(f"🧹 Removed corrupted cell features cache: {cells_file.name}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up corrupted cell features cache: {cleanup_error}")
+        
+        self.cache_misses['cell_features'] += 1
+        logger.debug(f"✗ Cell features cache miss for {area_key}")
+        return None
+    
+    def store_cell_features(self, area_key: str, cell_features: Dict):
+        """Store cell features in cache (FeatureDatabase format)."""
+        cell_cache_key = f"cells_{area_key}"
+        self.spatial_grid_cache[cell_cache_key] = cell_features
+        
+        # Save to disk in background with thread safety
+        def save_to_disk():
+            # Ensure cache directory exists
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            
+            cells_file = self.cache_dir / f"cells_{area_key}.pkl"
+            temp_file = self.cache_dir / f"cells_{area_key}.pkl.tmp"
+            try:
+                # Write to temporary file first to avoid corruption
+                with open(temp_file, 'wb') as f:
+                    pickle.dump(cell_features, f)
+                
+                # Atomic rename to final location
+                temp_file.rename(cells_file)
+                logger.debug(f"💾 Cell features saved to disk for {area_key}")
+            except Exception as e:
+                logger.error(f"Failed to save cell features to disk: {e}")
+                # Clean up temp file if it exists
+                if temp_file.exists():
+                    temp_file.unlink()
+        
+        # Use thread to avoid blocking
+        threading.Thread(target=save_to_disk, daemon=True).start()
     
     def cleanup_old_cache(self, max_age_hours: int = 168):  # 1 week
         """Clean up old cache entries."""

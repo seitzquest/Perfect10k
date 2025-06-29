@@ -68,8 +68,8 @@ class CleanRouter:
             semantic_overlay_manager: Optional semantic overlay manager for nature features
         """
         self.semantic_overlay_manager = semantic_overlay_manager
-        # Use existing cache location where data is stored
-        self.spatial_storage = SpatialTileStorage(storage_dir="cache/graphs")
+        # Use proper storage location for spatial tiles
+        self.spatial_storage = SpatialTileStorage(storage_dir="storage/tiles")
         self.client_sessions: Dict[str, ClientSession] = {}
         self.candidate_generators: Dict[str, CleanCandidateGenerator] = {}  # Per area
         
@@ -110,7 +110,7 @@ class CleanRouter:
             area_key = f"{lat:.3f}_{lon:.3f}"  # Rough area grouping
             if area_key not in self.candidate_generators:
                 self.candidate_generators[area_key] = CleanCandidateGenerator(
-                    graph, self.semantic_overlay_manager
+                    graph, self.semantic_overlay_manager, area_key
                 )
                 # Initialize in background if not already done
                 if not self.candidate_generators[area_key].is_initialized:
