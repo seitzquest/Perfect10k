@@ -4,6 +4,7 @@ Simple, fast router using the new clean candidate generation system.
 """
 
 import time
+import asyncio
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 import networkx as nx
@@ -11,6 +12,9 @@ from loguru import logger
 
 from clean_candidate_generator import CleanCandidateGenerator
 from core.spatial_tile_storage import SpatialTileStorage
+from performance_profiler import profile_operation, step, profile_function
+from smart_cache_manager import cache_manager
+from async_job_manager import job_manager, JobPriority, submit_route_job, submit_cache_warming_job
 
 
 @dataclass
@@ -70,6 +74,9 @@ class CleanRouter:
         self.candidate_generators: Dict[str, CleanCandidateGenerator] = {}  # Per area
         
         logger.info("Initialized clean router")
+        
+        # Start async job manager
+        asyncio.create_task(self._ensure_async_ready())
     
     def start_route(self, client_id: str, lat: float, lon: float,
                    preference: str, target_distance: int) -> Dict[str, Any]:
@@ -86,105 +93,112 @@ class CleanRouter:
         Returns:
             Dictionary with initial candidates and session info
         """
-        start_time = time.time()
-        
-        logger.info(f"Starting route for client {client_id} at ({lat:.6f}, {lon:.6f})")
-        
-        # Load graph for the area
-        graph = self._get_graph_for_location(lat, lon)
-        if not graph or len(graph.nodes) == 0:
-            raise ValueError(f"No graph data available for location ({lat:.6f}, {lon:.6f}). "
-                           f"Please load OSM data for this area first using the data loading utilities.")
-        
-        # Get or create candidate generator for this area
-        area_key = f"{lat:.3f}_{lon:.3f}"  # Rough area grouping
-        if area_key not in self.candidate_generators:
-            self.candidate_generators[area_key] = CleanCandidateGenerator(
-                graph, self.semantic_overlay_manager
+        with profile_operation("start_route") as profiler:
+            start_time = time.time()
+            
+            logger.info(f"Starting route for client {client_id} at ({lat:.6f}, {lon:.6f})")
+            
+            profiler.step("Load graph for area")
+            # Load graph for the area
+            graph = self._get_graph_for_location(lat, lon)
+            if not graph or len(graph.nodes) == 0:
+                raise ValueError(f"No graph data available for location ({lat:.6f}, {lon:.6f}). "
+                               f"Please load OSM data for this area first using the data loading utilities.")
+            
+            profiler.step("Initialize candidate generator")
+            # Get or create candidate generator for this area
+            area_key = f"{lat:.3f}_{lon:.3f}"  # Rough area grouping
+            if area_key not in self.candidate_generators:
+                self.candidate_generators[area_key] = CleanCandidateGenerator(
+                    graph, self.semantic_overlay_manager
+                )
+                # Initialize in background if not already done
+                if not self.candidate_generators[area_key].is_initialized:
+                    init_success = self.candidate_generators[area_key].initialize()
+                    if not init_success:
+                        raise ValueError("Failed to initialize candidate generator")
+            
+            generator = self.candidate_generators[area_key]
+            
+            profiler.step("Find starting node")
+            # Find starting node
+            start_node = self._find_nearest_node(graph, lat, lon)
+            if start_node is None:
+                raise ValueError("No walkable node found near starting location")
+            
+            profiler.step("Create route session")
+            # Create active route
+            active_route = ActiveRoute(
+                start_location={'lat': lat, 'lon': lon},
+                current_waypoints=[start_node],
+                current_path=[start_node],
+                total_distance=0.0,
+                target_distance=float(target_distance),
+                preference=preference
             )
-            # Initialize in background if not already done
-            if not self.candidate_generators[area_key].is_initialized:
-                init_success = self.candidate_generators[area_key].initialize()
-                if not init_success:
-                    raise ValueError("Failed to initialize candidate generator")
-        
-        generator = self.candidate_generators[area_key]
-        
-        # Find starting node
-        start_node = self._find_nearest_node(graph, lat, lon)
-        if start_node is None:
-            raise ValueError("No walkable node found near starting location")
-        
-        # Create active route
-        active_route = ActiveRoute(
-            start_location={'lat': lat, 'lon': lon},
-            current_waypoints=[start_node],
-            current_path=[start_node],
-            total_distance=0.0,
-            target_distance=float(target_distance),
-            preference=preference
-        )
-        
-        # Create or update client session
-        self.client_sessions[client_id] = ClientSession(
-            client_id=client_id,
-            graph_center=(lat, lon),
-            active_route=active_route
-        )
-        
-        # Generate initial candidates
-        candidates_result = generator.generate_candidates(
-            from_lat=lat, 
-            from_lon=lon,
-            target_distance=target_distance / 8.0,  # First step is ~1/8 of total
-            preference=preference,
-            exclude_nodes=[start_node],
-            existing_route_nodes=[]  # No existing route yet
-        )
-        
-        # Convert to API format
-        api_candidates = []
-        for scored_candidate in candidates_result.candidates:
-            # Convert feature scores to string keys for JSON
-            feature_scores = {
-                feature_type.value: score 
-                for feature_type, score in scored_candidate.feature_scores.items()
+            
+            # Create or update client session
+            self.client_sessions[client_id] = ClientSession(
+                client_id=client_id,
+                graph_center=(lat, lon),
+                active_route=active_route
+            )
+            
+            profiler.step("Generate initial candidates")
+            # Generate initial candidates
+            candidates_result = generator.generate_candidates(
+                from_lat=lat, 
+                from_lon=lon,
+                target_distance=target_distance / 8.0,  # First step is ~1/8 of total
+                preference=preference,
+                exclude_nodes=[start_node],
+                existing_route_nodes=[]  # No existing route yet
+            )
+            
+            profiler.step("Convert to API format")
+            # Convert to API format
+            api_candidates = []
+            for scored_candidate in candidates_result.candidates:
+                # Convert feature scores to string keys for JSON
+                feature_scores = {
+                    feature_type.value: score 
+                    for feature_type, score in scored_candidate.feature_scores.items()
+                }
+                
+                route_candidate = RouteCandidate(
+                    node_id=scored_candidate.node_id,
+                    lat=scored_candidate.lat,
+                    lon=scored_candidate.lon,
+                    value_score=scored_candidate.overall_score,
+                    explanation=scored_candidate.explanation,
+                    distance_from_current=self._calculate_distance(lat, lon, scored_candidate.lat, scored_candidate.lon),
+                    estimated_route_completion=target_distance * 0.15,  # Rough estimate
+                    semantic_scores=feature_scores
+                )
+                api_candidates.append(route_candidate)
+            
+            elapsed_ms = (time.time() - start_time) * 1000
+            
+            result = {
+                'session_id': client_id,
+                'start_location': {'lat': lat, 'lon': lon},
+                'candidates': [self._candidate_to_dict(c) for c in api_candidates],
+                'route_stats': {
+                    'current_distance': 0.0,
+                    'target_distance': target_distance,
+                    'waypoints_count': 1,
+                    'completion_percentage': 0.0
+                },
+                'generation_info': {
+                    'generation_time_ms': candidates_result.generation_time_ms,
+                    'total_time_ms': elapsed_ms,
+                    'search_stats': candidates_result.search_stats,
+                    'preference_analysis': candidates_result.preference_analysis
+                }
             }
             
-            route_candidate = RouteCandidate(
-                node_id=scored_candidate.node_id,
-                lat=scored_candidate.lat,
-                lon=scored_candidate.lon,
-                value_score=scored_candidate.overall_score,
-                explanation=scored_candidate.explanation,
-                distance_from_current=self._calculate_distance(lat, lon, scored_candidate.lat, scored_candidate.lon),
-                estimated_route_completion=target_distance * 0.15,  # Rough estimate
-                semantic_scores=feature_scores
-            )
-            api_candidates.append(route_candidate)
-        
-        elapsed_ms = (time.time() - start_time) * 1000
-        
-        result = {
-            'session_id': client_id,
-            'start_location': {'lat': lat, 'lon': lon},
-            'candidates': [self._candidate_to_dict(c) for c in api_candidates],
-            'route_stats': {
-                'current_distance': 0.0,
-                'target_distance': target_distance,
-                'waypoints_count': 1,
-                'completion_percentage': 0.0
-            },
-            'generation_info': {
-                'generation_time_ms': candidates_result.generation_time_ms,
-                'total_time_ms': elapsed_ms,
-                'search_stats': candidates_result.search_stats,
-                'preference_analysis': candidates_result.preference_analysis
-            }
-        }
-        
-        logger.info(f"Started route with {len(api_candidates)} candidates in {elapsed_ms:.1f}ms")
-        return result
+            logger.info(f"Started route with {len(api_candidates)} candidates in {elapsed_ms:.1f}ms")
+            return result
     
     def add_waypoint(self, client_id: str, node_id: int) -> Dict[str, Any]:
         """
@@ -471,17 +485,297 @@ class CleanRouter:
             'last_access': session.last_access
         }
     
-    def _get_graph_for_location(self, lat: float, lon: float) -> nx.MultiGraph:
-        """Get graph data for a location using spatial tile storage with automatic OSM loading."""
+    # === ASYNC METHODS FOR BACKGROUND PROCESSING ===
+    
+    async def _ensure_async_ready(self):
+        """Ensure async job manager is running."""
         try:
-            # Use spatial tile storage to get graph (now auto-loads OSM with geometry if missing)
+            await job_manager.start()
+        except Exception as e:
+            logger.error(f"Failed to start async job manager: {e}")
+    
+    async def start_route_async(self, client_id: str, lat: float, lon: float,
+                               preference: str, target_distance: int) -> Dict[str, Any]:
+        """
+        Async route start with immediate response + background processing.
+        
+        Returns immediate response with cached data, then submits background
+        jobs for cache warming and route refinement.
+        """
+        logger.info(f"🚀 Async route start for client {client_id} at ({lat:.6f}, {lon:.6f})")
+        
+        # Step 1: Try immediate response from cache
+        try:
+            cached_result = await self._try_immediate_cached_response(
+                client_id, lat, lon, preference, target_distance
+            )
+            
+            if cached_result:
+                # Start background cache warming for nearby areas
+                await self._start_background_cache_warming(lat, lon)
+                
+                cached_result['response_type'] = 'cached'
+                cached_result['background_jobs'] = 'started'
+                return cached_result
+        
+        except Exception as e:
+            logger.warning(f"Cache lookup failed: {e}")
+        
+        # Step 2: Submit background job for full processing
+        job_id = await submit_route_job(
+            "start_route_background",
+            self._background_route_generation,
+            client_id, lat, lon, preference, target_distance,
+            priority=JobPriority.HIGH,
+            client_id=client_id
+        )
+        
+        # Step 3: Start cache warming in parallel
+        await self._start_background_cache_warming(lat, lon)
+        
+        # Return job tracking info
+        return {
+            'session_id': client_id,
+            'response_type': 'async',
+            'job_id': job_id,
+            'status': 'processing',
+            'background_jobs': 'started',
+            'estimated_completion_ms': 30000,  # 30 seconds estimate
+            'polling_interval_ms': 1000  # Check every 1 second
+        }
+    
+    async def _try_immediate_cached_response(self, client_id: str, lat: float, lon: float,
+                                           preference: str, target_distance: int) -> Optional[Dict[str, Any]]:
+        """Try to provide immediate response from cache."""
+        
+        # Check if we have a cached graph for this area
+        graph = cache_manager.get_cached_graph(lat, lon)
+        if not graph:
+            return None
+        
+        logger.info(f"🚀 Fast cached response for {client_id}")
+        
+        # Check if we have a cached candidate generator
+        area_key = f"{lat:.3f}_{lon:.3f}"
+        if area_key not in self.candidate_generators:
+            # Try to initialize quickly from cache
+            generator = CleanCandidateGenerator(graph, self.semantic_overlay_manager)
+            if hasattr(generator, 'quick_init_from_cache'):
+                if not generator.quick_init_from_cache():
+                    return None
+            else:
+                return None  # Skip if no quick init available
+        else:
+            generator = self.candidate_generators[area_key]
+        
+        # Generate candidates quickly
+        try:
+            start_time = time.time()
+            
+            # Find starting node
+            start_node = self._find_nearest_node(graph, lat, lon)
+            if start_node is None:
+                return None
+            
+            # Create session
+            active_route = ActiveRoute(
+                start_location={'lat': lat, 'lon': lon},
+                current_waypoints=[start_node],
+                current_path=[start_node],
+                total_distance=0.0,
+                target_distance=float(target_distance),
+                preference=preference
+            )
+            
+            self.client_sessions[client_id] = ClientSession(
+                client_id=client_id,
+                graph_center=(lat, lon),
+                active_route=active_route
+            )
+            
+            # Generate candidates
+            candidates_result = generator.generate_candidates(
+                from_lat=lat,
+                from_lon=lon,
+                target_distance=target_distance / 8.0,
+                preference=preference,
+                exclude_nodes=[start_node],
+                existing_route_nodes=[]
+            )
+            
+            # Convert to API format
+            api_candidates = []
+            for scored_candidate in candidates_result.candidates:
+                feature_scores = {
+                    feature_type.value: score 
+                    for feature_type, score in scored_candidate.feature_scores.items()
+                }
+                
+                route_candidate = RouteCandidate(
+                    node_id=scored_candidate.node_id,
+                    lat=scored_candidate.lat,
+                    lon=scored_candidate.lon,
+                    value_score=scored_candidate.overall_score,
+                    explanation=scored_candidate.explanation,
+                    distance_from_current=self._calculate_distance(lat, lon, scored_candidate.lat, scored_candidate.lon),
+                    estimated_route_completion=target_distance * 0.15,
+                    semantic_scores=feature_scores
+                )
+                api_candidates.append(route_candidate)
+            
+            elapsed_ms = (time.time() - start_time) * 1000
+            
+            result = {
+                'session_id': client_id,
+                'start_location': {'lat': lat, 'lon': lon},
+                'candidates': [self._candidate_to_dict(c) for c in api_candidates],
+                'route_stats': {
+                    'current_distance': 0.0,
+                    'target_distance': target_distance,
+                    'waypoints_count': 1,
+                    'completion_percentage': 0.0
+                },
+                'generation_info': {
+                    'generation_time_ms': candidates_result.generation_time_ms,
+                    'total_time_ms': elapsed_ms,
+                    'search_stats': candidates_result.search_stats,
+                    'preference_analysis': candidates_result.preference_analysis
+                }
+            }
+            
+            logger.info(f"⚡ Cached response in {elapsed_ms:.1f}ms with {len(api_candidates)} candidates")
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Fast cached response failed: {e}")
+            return None
+    
+    def _background_route_generation(self, client_id: str, lat: float, lon: float,
+                                   preference: str, target_distance: int) -> Dict[str, Any]:
+        """Background route generation for async processing."""
+        logger.info(f"🔄 Background route generation for {client_id}")
+        
+        # This is the full route generation (same as sync version)
+        return self.start_route(client_id, lat, lon, preference, target_distance)
+    
+    async def _start_background_cache_warming(self, center_lat: float, center_lon: float):
+        """Start background cache warming for nearby areas."""
+        
+        # Define warming radius (areas around current location)
+        warming_offsets = [
+            (0.01, 0.01),   # NE
+            (0.01, -0.01),  # NW  
+            (-0.01, 0.01),  # SE
+            (-0.01, -0.01), # SW
+            (0.02, 0.0),    # N
+            (-0.02, 0.0),   # S
+            (0.0, 0.02),    # E
+            (0.0, -0.02),   # W
+        ]
+        
+        warming_jobs = []
+        
+        for lat_offset, lon_offset in warming_offsets:
+            warm_lat = center_lat + lat_offset
+            warm_lon = center_lon + lon_offset
+            
+            # Check if already cached
+            if cache_manager.get_cached_graph(warm_lat, warm_lon):
+                continue  # Skip if already cached
+            
+            # Submit warming job
+            job_id = await submit_cache_warming_job(
+                warm_lat, warm_lon,
+                self._warm_area_cache,
+                lat=warm_lat, lon=warm_lon
+            )
+            warming_jobs.append(job_id)
+        
+        if warming_jobs:
+            logger.info(f"🔥 Started {len(warming_jobs)} cache warming jobs around ({center_lat:.6f}, {center_lon:.6f})")
+        else:
+            logger.debug(f"✅ All nearby areas already cached for ({center_lat:.6f}, {center_lon:.6f})")
+        
+        return warming_jobs
+    
+    def _warm_area_cache(self, lat: float, lon: float) -> bool:
+        """Warm cache for a specific area."""
+        try:
+            logger.info(f"🔥 Warming cache for area ({lat:.6f}, {lon:.6f})")
+            
+            # Load graph (will be cached automatically)
+            graph = self._get_graph_for_location(lat, lon)
+            if not graph:
+                logger.warning(f"Failed to load graph for warming at ({lat:.6f}, {lon:.6f})")
+                return False
+            
+            # Initialize candidate generator (will cache features)
+            area_key = f"{lat:.3f}_{lon:.3f}"
+            if area_key not in self.candidate_generators:
+                generator = CleanCandidateGenerator(graph, self.semantic_overlay_manager)
+                if generator.initialize():
+                    self.candidate_generators[area_key] = generator
+                    logger.info(f"✅ Cache warmed for area ({lat:.6f}, {lon:.6f}) - {len(graph.nodes)} nodes")
+                    return True
+                else:
+                    logger.warning(f"Failed to initialize generator for warming at ({lat:.6f}, {lon:.6f})")
+                    return False
+            else:
+                logger.debug(f"✅ Area ({lat:.6f}, {lon:.6f}) already initialized")
+                return True
+            
+        except Exception as e:
+            logger.error(f"Cache warming failed for ({lat:.6f}, {lon:.6f}): {e}")
+            return False
+    
+    async def get_job_status_async(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Get async job status with progress."""
+        result = job_manager.get_job_status(job_id)
+        if not result:
+            return None
+        
+        return {
+            'job_id': job_id,
+            'status': result.status.value,
+            'progress': result.progress,
+            'result': result.result,
+            'error': result.error,
+            'execution_time_ms': result.execution_time_ms,
+            'created_at': result.created_at,
+            'started_at': result.started_at,
+            'completed_at': result.completed_at
+        }
+    
+    async def wait_for_job_async(self, job_id: str, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
+        """Wait for job completion with timeout."""
+        result = await job_manager.wait_for_job(job_id, timeout)
+        if result:
+            return await self.get_job_status_async(job_id)
+        return None
+    
+    # === END ASYNC METHODS ===
+    
+    @profile_function("get_graph_for_location")
+    def _get_graph_for_location(self, lat: float, lon: float) -> nx.MultiGraph:
+        """Get graph data for a location using smart caching with fallback to spatial tile storage."""
+        try:
+            # First, try smart cache for instant loading
+            graph = cache_manager.get_cached_graph(lat, lon)
+            if graph is not None:
+                logger.info(f"🚀 Graph loaded from cache with {len(graph.nodes)} nodes for ({lat:.6f}, {lon:.6f})")
+                return graph
+            
+            # Cache miss - load from spatial tile storage
+            logger.info(f"📥 Cache miss, loading graph from tiles for ({lat:.6f}, {lon:.6f})")
             graph = self.spatial_storage.load_graph_for_area(lat, lon, radius_m=5000)
             
             if graph is None:
                 logger.error(f"Failed to load or create graph data for ({lat:.6f}, {lon:.6f})")
                 return None
             
-            logger.info(f"Successfully loaded graph with {len(graph.nodes)} nodes for ({lat:.6f}, {lon:.6f})")
+            # Store in smart cache for next time
+            cache_manager.store_graph(lat, lon, graph)
+            logger.info(f"💾 Graph cached and loaded with {len(graph.nodes)} nodes for ({lat:.6f}, {lon:.6f})")
             return graph
             
         except Exception as e:
@@ -795,11 +1089,17 @@ class CleanRouter:
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get router statistics."""
+        cache_stats = cache_manager.get_cache_statistics()
         return {
             'active_sessions': len(self.client_sessions),
             'candidate_generators': len(self.candidate_generators),
             'generator_stats': {
                 area_key: generator.get_statistics() 
                 for area_key, generator in self.candidate_generators.items()
+            },
+            'cache_performance': {
+                'hit_rate': cache_stats['overall_hit_rate'],
+                'total_requests': cache_stats['total_requests'],
+                'cache_sizes': cache_stats['cache_sizes']
             }
         }

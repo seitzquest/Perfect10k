@@ -1,0 +1,81 @@
+# Docker Compose configuration for Perfect10k with optimized caching
+# This extends the main docker-compose.yml with cache-specific settings
+
+version: '3.8'
+
+services:
+  backend:
+    # Cache-optimized environment variables
+    environment:
+      - CACHE_DIR=/app/cache
+      - SMART_CACHE_DIR=/app/cache/smart_cache
+      - GRAPH_CACHE_DIR=/app/cache/graphs
+      - JOB_CACHE_DIR=/app/cache/jobs
+      - ASYNC_WORKERS=4
+      - ENABLE_CACHE_WARMING=true
+      - CACHE_EXPORT_ENABLED=true
+      
+    # Volume mounts for persistent cache
+    volumes:
+      - perfect10k_cache:/app/cache
+      - cache_exports:/app/cache/exports
+      
+    # Health check for cache readiness
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/backend'); from docker_cache_config import docker_cache; print('Cache OK' if docker_cache.get_cache_info()['total_files'] >= 0 else 'Cache Error')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Cache management service for administration
+  cache-manager:
+    build: .
+    command: python backend/cache_management_cli.py
+    volumes:
+      - perfect10k_cache:/app/cache
+      - cache_exports:/app/cache/exports
+      - ./backend:/app/backend
+    environment:
+      - CACHE_DIR=/app/cache
+    profiles:
+      - cache-admin
+    stdin_open: true
+    tty: true
+
+  # Cache warming service (optional)
+  cache-warmer:
+    build: .
+    command: python backend/cache_warming_service.py
+    volumes:
+      - perfect10k_cache:/app/cache
+    environment:
+      - CACHE_DIR=/app/cache
+      - WARMING_ENABLED=true
+      - POPULAR_CITIES=Munich,Berlin,Hamburg,Frankfurt,Cologne
+    profiles:
+      - cache-warming
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  # Persistent cache volume (survives container restarts)
+  perfect10k_cache:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ./cache
+      
+  # Cache exports volume (for backup/transfer)
+  cache_exports:
+    driver: local
+    driver_opts:
+      type: bind  
+      o: bind
+      device: ./cache_exports
+
+networks:
+  default:
+    name: perfect10k_network
