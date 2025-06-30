@@ -231,14 +231,29 @@ class SpatialTileStorage:
             logger.info(f"Loading OSM data with geometry for ({lat:.6f}, {lon:.6f}), radius={radius_m}m")
             
             # Load with proper parameters to ensure route visualization with geometry
-            graph = ox.graph_from_point(
-                (lat, lon), 
-                dist=radius_m,
-                network_type='walk',
-                retain_all=True,
-                truncate_by_edge=True,
-                simplify=False  # Keep intermediate nodes for better geometry
-            )
+            try:
+                graph = ox.graph_from_point(
+                    (lat, lon), 
+                    dist=radius_m,
+                    network_type='walk',
+                    retain_all=True,
+                    truncate_by_edge=True,
+                    simplify=False  # Keep intermediate nodes for better geometry
+                )
+            except Exception as osm_error:
+                logger.warning(f"Initial OSM load failed: {osm_error}, trying with simplified parameters...")
+                # Fallback to simpler parameters
+                try:
+                    graph = ox.graph_from_point(
+                        (lat, lon), 
+                        dist=radius_m,
+                        network_type='walk',
+                        simplify=True  # Allow simplification as fallback
+                    )
+                    logger.info("✅ OSM load succeeded with simplified parameters")
+                except Exception as fallback_error:
+                    logger.error(f"OSM loading failed completely: {fallback_error}")
+                    return None
             
             # Add geometry data to edges (required for curved route visualization)
             logger.info("Adding geometry data to edges...")

@@ -265,7 +265,21 @@ class CleanRouter:
         
         # Calculate remaining distance for next candidates
         remaining_distance = route.target_distance - route.total_distance
-        next_step_distance = min(remaining_distance * 0.3, route.target_distance / 6.0)
+        completion_percentage = (route.total_distance / route.target_distance) * 100
+        
+        # Use more generous step distance when close to completion or allow exceeding target
+        if completion_percentage >= 85:
+            # When close to completion, use a minimum step distance to ensure candidates exist
+            # Allow routes to exceed target by up to 20% for better user experience
+            min_step_distance = 400.0  # Minimum 400m to ensure candidates can be found
+            base_step_distance = route.target_distance / 8.0  # Slightly larger base step
+            next_step_distance = max(min_step_distance, base_step_distance)
+            logger.info(f"Near completion ({completion_percentage:.1f}%), using generous step distance: {next_step_distance:.0f}m")
+        else:
+            # Normal logic for early/mid route
+            base_step = min(remaining_distance * 0.3, route.target_distance / 6.0)
+            min_step_distance = 200.0  # Always use at least 200m step
+            next_step_distance = max(min_step_distance, base_step)
         
         logger.info(f"Generating next candidates from {node_id} with remaining distance {remaining_distance:.0f}m, next step {next_step_distance:.0f}m")
         
@@ -295,7 +309,12 @@ class CleanRouter:
                 value_score=scored_candidate.overall_score,
                 explanation=scored_candidate.explanation,
                 distance_from_current=self._calculate_distance(node_lat, node_lon, scored_candidate.lat, scored_candidate.lon),
-                estimated_route_completion=route.total_distance + (remaining_distance * 0.7),
+                estimated_route_completion=self._calculate_estimated_completion(
+                    route.total_distance, 
+                    route.target_distance, 
+                    completion_percentage, 
+                    next_step_distance
+                ),
                 semantic_scores=feature_scores
             )
             api_candidates.append(route_candidate)
@@ -882,6 +901,21 @@ class CleanRouter:
             total_distance += edge_length
         
         return total_distance
+    
+    def _calculate_estimated_completion(self, current_distance: float, target_distance: float, 
+                                      completion_percentage: float, next_step_distance: float) -> float:
+        """Calculate estimated route completion distance accounting for ability to exceed target."""
+        
+        if completion_percentage >= 85:
+            # When close to completion, estimate based on next step plus some buffer
+            # Since we allow exceeding target by up to 20%, show realistic estimate
+            estimated_final = current_distance + next_step_distance
+            max_allowed = target_distance * 1.2  # 20% overage allowed
+            return min(estimated_final, max_allowed)
+        else:
+            # Normal estimation - assume we'll use about 70% of remaining distance
+            remaining_distance = target_distance - current_distance
+            return current_distance + (remaining_distance * 0.7)
     
     def _validate_path_connectivity(self, graph: nx.MultiGraph, path: List[int], path_name: str):
         """Validate that all consecutive nodes in a path are connected by edges."""

@@ -404,6 +404,8 @@ class AsyncJobManager:
         """Persist job state for Docker container restarts."""
         try:
             state_file = self.persistence_dir / "job_state.json"
+            backup_file = self.persistence_dir / "job_state.json.backup"
+            temp_file = self.persistence_dir / "job_state.json.tmp"
             
             # Only persist pending/running jobs
             persistent_jobs = {}
@@ -430,8 +432,16 @@ class AsyncJobManager:
                 'timestamp': time.time()
             }
             
-            with open(state_file, 'w') as f:
+            # Atomic write with backup
+            with open(temp_file, 'w') as f:
                 json.dump(state, f, indent=2)
+            
+            # Create backup of existing file
+            if state_file.exists():
+                state_file.rename(backup_file)
+            
+            # Move temp file to final location
+            temp_file.rename(state_file)
             
             logger.debug(f"💾 Persisted {len(persistent_jobs)} jobs to {state_file}")
             
@@ -440,13 +450,29 @@ class AsyncJobManager:
     
     async def _load_persisted_jobs(self):
         """Load persisted job state from Docker volume."""
+        state_file = self.persistence_dir / "job_state.json"
+        backup_file = self.persistence_dir / "job_state.json.backup"
+        
         try:
-            state_file = self.persistence_dir / "job_state.json"
             if not state_file.exists():
                 return
             
-            with open(state_file, 'r') as f:
-                state = json.load(f)
+            # Try to load the main state file
+            try:
+                with open(state_file, 'r') as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Main job state file corrupted: {e}")
+                
+                # Try backup file
+                if backup_file.exists():
+                    logger.info("Attempting to restore from backup...")
+                    with open(backup_file, 'r') as f:
+                        state = json.load(f)
+                    logger.info("✅ Successfully restored from backup")
+                else:
+                    logger.warning("No backup file available, starting fresh")
+                    return
             
             # Restore stats
             self.stats.update(state.get('stats', {}))

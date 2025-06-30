@@ -257,7 +257,14 @@ class CleanCandidateGenerator:
                     route_data = self.graph.nodes[route_node_id]
                     route_node_coords.append((route_data['y'], route_data['x']))
         
-        min_route_distance = 300.0  # Minimum distance from existing route (meters)
+        # Adaptive minimum route distance based on search area
+        # When search area is small (close to target), use smaller minimum distance
+        if max_distance <= 500:
+            min_route_distance = max(50.0, max_distance * 0.3)  # 30% of search radius, min 50m
+        else:
+            min_route_distance = 300.0  # Standard distance for larger search areas
+        
+        logger.debug(f"Using min_route_distance: {min_route_distance:.0f}m for search area: {max_distance:.0f}m")
         
         for node_id in nearby_nodes:
             if node_id in exclude_nodes:
