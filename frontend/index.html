@@ -134,10 +134,28 @@
                                 <span class="overlay-icon">🏞️</span>
                                 <span class="overlay-label">Lakes</span>
                             </button>
+                            
+                            <button type="button" id="overlay-toggle-scoring" class="overlay-toggle-btn" title="Visualize algorithm scoring">
+                                <span class="overlay-icon">🎯</span>
+                                <span class="overlay-label">Scoring</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Scoring Type Selector (only visible when scoring overlay is active) -->
+                        <div id="scoring-controls" class="scoring-controls" style="display: none;">
+                            <label for="scoring-type-select">Score Type:</label>
+                            <select id="scoring-type-select" class="scoring-type-select">
+                                <option value="overall">Overall Score</option>
+                                <option value="close_to_forest">Forest Proximity</option>
+                                <option value="close_to_water">Water Proximity</option>
+                                <option value="close_to_park">Park Proximity</option>
+                                <option value="path_quality">Path Quality</option>
+                                <option value="intersection_density">Intersection Density</option>
+                            </select>
                         </div>
                         
                         <div class="overlay-info">
-                            <p class="overlay-description">Toggle natural features to help plan scenic routes through parks, along waterways, and around lakes.</p>
+                            <p class="overlay-description">Toggle natural features and algorithm visualization to understand route scoring and plan scenic routes through parks, along waterways, and around lakes.</p>
                         </div>
                     </div>
 

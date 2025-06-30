@@ -772,6 +772,56 @@ class CleanRouter:
     
     # === END ASYNC METHODS ===
     
+    def get_scoring_visualization_data(self, client_id: str, score_type: str = "overall") -> Dict[str, Any]:
+        """
+        Get scored nodes data for semantic overlay visualization.
+        
+        Args:
+            client_id: Client session ID
+            score_type: Type of score to visualize ("overall", "nature", "water", etc.)
+        
+        Returns:
+            Dictionary with scored nodes for map visualization
+        """
+        if client_id not in self.client_sessions:
+            return {
+                'error': 'Client session not found',
+                'nodes': [],
+                'score_range': {'min': 0, 'max': 1},
+                'total_nodes': 0
+            }
+        
+        session = self.client_sessions[client_id]
+        if not session.active_route:
+            return {
+                'error': 'No active route found',
+                'nodes': [],
+                'score_range': {'min': 0, 'max': 1},
+                'total_nodes': 0
+            }
+        
+        # Get the area key for this session
+        lat, lon = session.graph_center
+        area_key = f"{lat:.3f}_{lon:.3f}"
+        
+        if area_key not in self.candidate_generators:
+            return {
+                'error': 'No candidate generator found for this area',
+                'nodes': [],
+                'score_range': {'min': 0, 'max': 1},
+                'total_nodes': 0
+            }
+        
+        generator = self.candidate_generators[area_key]
+        visualization_data = generator.get_scored_nodes_for_visualization(score_type)
+        
+        # Add session context
+        visualization_data['client_id'] = client_id
+        visualization_data['area_center'] = {'lat': lat, 'lon': lon}
+        visualization_data['route_preference'] = session.active_route.preference
+        
+        return visualization_data
+    
     @profile_function("get_graph_for_location")
     def _get_graph_for_location(self, lat: float, lon: float) -> nx.MultiGraph:
         """Get graph data for a location using smart caching with fallback to spatial tile storage."""

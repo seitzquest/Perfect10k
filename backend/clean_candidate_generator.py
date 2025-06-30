@@ -63,6 +63,10 @@ class CleanCandidateGenerator:
         self.variety_factor = 0.3  # 30% randomness, 70% score-based
         self.min_score_threshold = 0.1  # Only consider candidates above this score
         
+        # Score visualization tracking
+        self.scored_nodes = {}  # node_id -> ScoredCandidate for visualization
+        self.max_scored_nodes = 1000  # Limit to prevent memory issues
+        
         # Initialization status
         self.is_initialized = False
         
@@ -359,7 +363,18 @@ class CleanCandidateGenerator:
             candidates, features_list, preference
         )
         
-        logger.debug(f"Scored {len(scored_candidates)} candidates")
+        # Track scored nodes for visualization (limit to prevent memory issues)
+        for candidate in scored_candidates:
+            self.scored_nodes[candidate.node_id] = candidate
+            
+            # Keep only the most recent scored nodes
+            if len(self.scored_nodes) > self.max_scored_nodes:
+                # Remove oldest entries (simple FIFO)
+                oldest_keys = list(self.scored_nodes.keys())[:-self.max_scored_nodes]
+                for old_key in oldest_keys:
+                    del self.scored_nodes[old_key]
+        
+        logger.debug(f"Scored {len(scored_candidates)} candidates, tracking {len(self.scored_nodes)} total")
         return scored_candidates
     
     def _apply_probabilistic_selection(self, scored_candidates: List[ScoredCandidate],
@@ -520,6 +535,80 @@ class CleanCandidateGenerator:
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         
         return R * c
+    
+    def get_scored_nodes_for_visualization(self, score_type: str = "overall") -> Dict[str, Any]:
+        """
+        Export scored nodes for semantic overlay visualization.
+        
+        Args:
+            score_type: Type of score to visualize ("overall", "nature", "water", etc.)
+        
+        Returns:
+            Dictionary with nodes and their scores for map visualization
+        """
+        if not self.scored_nodes:
+            return {
+                'nodes': [],
+                'score_range': {'min': 0, 'max': 1},
+                'total_nodes': 0,
+                'score_type': score_type
+            }
+        
+        visualization_nodes = []
+        scores = []
+        
+        for node_id, scored_candidate in self.scored_nodes.items():
+            # Extract the specific score type
+            if score_type == "overall":
+                score = scored_candidate.overall_score
+            else:
+                # Look for feature-specific scores
+                feature_score = None
+                for feature_type, feature_score_val in scored_candidate.feature_scores.items():
+                    if score_type.lower() in feature_type.value.lower():
+                        feature_score = feature_score_val
+                        break
+                
+                if feature_score is None:
+                    continue  # Skip nodes without this feature score
+                score = feature_score
+            
+            visualization_nodes.append({
+                'node_id': node_id,
+                'lat': scored_candidate.lat,
+                'lon': scored_candidate.lon,
+                'score': score,
+                'overall_score': scored_candidate.overall_score,
+                'explanation': scored_candidate.explanation,
+                'feature_scores': {ft.value: fs for ft, fs in scored_candidate.feature_scores.items()}
+            })
+            scores.append(score)
+        
+        # Calculate score range for color mapping
+        if scores:
+            score_range = {'min': min(scores), 'max': max(scores)}
+        else:
+            score_range = {'min': 0, 'max': 1}
+        
+        return {
+            'nodes': visualization_nodes,
+            'score_range': score_range,
+            'total_nodes': len(visualization_nodes),
+            'score_type': score_type,
+            'available_score_types': self._get_available_score_types()
+        }
+    
+    def _get_available_score_types(self) -> List[str]:
+        """Get list of available score types for visualization."""
+        available_types = ['overall']
+        
+        if self.scored_nodes:
+            # Get feature types from first scored node
+            first_node = next(iter(self.scored_nodes.values()))
+            for feature_type in first_node.feature_scores.keys():
+                available_types.append(feature_type.value)
+        
+        return available_types
     
     def _calculate_search_area(self, target_distance: float) -> float:
         """Calculate search area in km²."""

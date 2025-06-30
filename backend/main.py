@@ -356,6 +356,32 @@ async def get_route_status(client_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get route status: {str(e)}") from e
 
 
+@app.get("/api/scoring-overlay/{session_id}")
+async def get_scoring_overlay(session_id: str, score_type: str = "overall"):
+    """
+    Get scored nodes data for semantic overlay visualization.
+    
+    Args:
+        session_id: Route session ID (e.g., "127.0.0.1_6748")
+        score_type: Type of score to visualize (overall, nature, water, parks, etc.)
+    
+    Returns:
+        JSON with scored nodes and their values for map visualization
+    """
+    try:
+        route_builder = get_route_builder()
+        visualization_data = route_builder.get_scoring_visualization_data(session_id, score_type)
+        
+        if 'error' in visualization_data:
+            raise HTTPException(status_code=404, detail=visualization_data['error'])
+        
+        return visualization_data
+        
+    except Exception as e:
+        logger.error(f"Failed to get scoring overlay: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get scoring overlay: {str(e)}") from e
+
+
 @app.get("/api/sessions")
 async def list_sessions():
     """List all active client sessions (for debugging)."""

@@ -105,13 +105,17 @@ class InteractiveMapEditor {
             this.semanticOverlays = new SemanticOverlaysManager(this.map, window.apiClient);
             
             // Set up desktop toggle buttons
-            const overlayTypes = ['forests', 'rivers', 'lakes'];
+            const overlayTypes = ['forests', 'rivers', 'lakes', 'scoring'];
             overlayTypes.forEach(overlayType => {
                 const toggleBtn = document.getElementById(`overlay-toggle-${overlayType}`);
                 if (toggleBtn) {
+                    console.log(`Setting up ${overlayType} toggle button`);
                     toggleBtn.addEventListener('click', () => {
+                        console.log(`${overlayType} toggle clicked`);
                         this.semanticOverlays.toggleOverlay(overlayType);
                     });
+                } else {
+                    console.warn(`Toggle button not found for ${overlayType}`);
                 }
                 
                 // Set up mobile checkboxes
@@ -133,10 +137,50 @@ class InteractiveMapEditor {
                 }
             });
             
+            // Set up scoring overlay controls
+            this.setupScoringOverlayControls();
+            
             console.log('Semantic overlays initialized');
             
         } catch (error) {
             console.error('Failed to initialize semantic overlays:', error);
+        }
+    }
+    
+    /**
+     * Set up scoring overlay specific controls
+     */
+    setupScoringOverlayControls() {
+        // Show/hide scoring controls when overlay is toggled
+        const scoringControls = document.getElementById('scoring-controls');
+        const scoringTypeSelect = document.getElementById('scoring-type-select');
+        
+        if (scoringControls) {
+            // Monitor scoring overlay state changes
+            const checkScoringState = () => {
+                if (this.semanticOverlays) {
+                    const isVisible = this.semanticOverlays.overlayStates.scoring;
+                    scoringControls.style.display = isVisible ? 'block' : 'none';
+                }
+            };
+            
+            // Check every 500ms for state changes (simple but effective)
+            setInterval(checkScoringState, 500);
+        }
+        
+        // Handle score type changes
+        if (scoringTypeSelect) {
+            scoringTypeSelect.addEventListener('change', async (e) => {
+                const newScoreType = e.target.value;
+                if (this.semanticOverlays) {
+                    try {
+                        await this.semanticOverlays.changeScoringType(newScoreType);
+                    } catch (error) {
+                        console.error('Failed to change scoring type:', error);
+                        this.showMessage('Failed to change scoring type: ' + error.message, 'error');
+                    }
+                }
+            });
         }
     }
     
@@ -222,6 +266,11 @@ class InteractiveMapEditor {
                 this.sessionId = response.session_id;
                 console.log('Interactive map session ID set to:', this.sessionId);
                 console.log('API client session ID:', window.apiClient.currentSession);
+                
+                // Set session ID for scoring overlay
+                if (this.semanticOverlays) {
+                    this.semanticOverlays.setCurrentSession(this.sessionId);
+                }
                 this.waypoints = [{lat, lon}];
                 
                 // Clear existing route display (but keep start marker) - but don't reset routeBuilding

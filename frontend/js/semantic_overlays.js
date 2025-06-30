@@ -12,14 +12,16 @@ class SemanticOverlaysManager {
         this.overlayLayers = {
             forests: L.layerGroup(),
             rivers: L.layerGroup(),
-            lakes: L.layerGroup()
+            lakes: L.layerGroup(),
+            scoring: L.layerGroup()
         };
         
         // Track overlay visibility state
         this.overlayStates = {
             forests: false,
             rivers: false,
-            lakes: false
+            lakes: false,
+            scoring: false
         };
         
         // Cache for overlay data to avoid repeated requests
@@ -62,8 +64,25 @@ class SemanticOverlaysManager {
                     fillOpacity: 0.4,
                     weight: 1
                 }
+            },
+            scoring: {
+                name: 'Algorithm Scores',
+                icon: '🎯',
+                description: 'Visualize how the algorithm scores different areas',
+                scoreTypes: [
+                    { value: 'overall', label: 'Overall Score' },
+                    { value: 'close_to_forest', label: 'Forest Proximity' },
+                    { value: 'close_to_water', label: 'Water Proximity' },
+                    { value: 'close_to_park', label: 'Park Proximity' },
+                    { value: 'path_quality', label: 'Path Quality' },
+                    { value: 'intersection_density', label: 'Intersection Density' }
+                ],
+                currentScoreType: 'overall'
             }
         };
+        
+        // Current session for scoring overlay
+        this.currentSessionId = null;
         
         this.initialize();
     }
@@ -147,18 +166,23 @@ class SemanticOverlaysManager {
      * Toggle overlay visibility
      */
     async toggleOverlay(overlayType) {
+        console.log(`Toggling ${overlayType} overlay`);
+        
         if (!this.overlayConfigs[overlayType]) {
             console.error(`Unknown overlay type: ${overlayType}`);
             return;
         }
         
         const isCurrentlyVisible = this.overlayStates[overlayType];
+        console.log(`${overlayType} current state: ${isCurrentlyVisible}`);
         
         if (isCurrentlyVisible) {
             // Hide overlay
+            console.log(`Hiding ${overlayType} overlay`);
             this.hideOverlay(overlayType);
         } else {
             // Show overlay - load data if needed
+            console.log(`Showing ${overlayType} overlay`);
             await this.showOverlay(overlayType);
         }
         
@@ -170,7 +194,10 @@ class SemanticOverlaysManager {
      * Show a specific overlay
      */
     async showOverlay(overlayType) {
+        console.log(`showOverlay called for ${overlayType}`);
+        
         if (this.loadingOverlays.has(overlayType)) {
+            console.log(`${overlayType} already loading`);
             return; // Already loading
         }
         
@@ -178,6 +205,7 @@ class SemanticOverlaysManager {
             this.loadingOverlays.add(overlayType);
             this.showLoadingIndicator(overlayType);
             
+            console.log(`Loading overlay data for ${overlayType}`);
             // Load overlay data
             await this.loadOverlayData(overlayType);
             
@@ -185,11 +213,11 @@ class SemanticOverlaysManager {
             this.overlayLayers[overlayType].addTo(this.map);
             this.overlayStates[overlayType] = true;
             
-            console.log(`${overlayType} overlay shown`);
+            console.log(`${overlayType} overlay shown successfully`);
             
         } catch (error) {
             console.error(`Failed to show ${overlayType} overlay:`, error);
-            this.showErrorMessage(`Failed to load ${overlayType} overlay`);
+            this.showErrorMessage(`Failed to load ${overlayType} overlay: ${error.message}`);
         } finally {
             this.loadingOverlays.delete(overlayType);
             this.hideLoadingIndicator(overlayType);
@@ -202,6 +230,16 @@ class SemanticOverlaysManager {
     hideOverlay(overlayType) {
         this.map.removeLayer(this.overlayLayers[overlayType]);
         this.overlayStates[overlayType] = false;
+        
+        // Special handling for scoring overlay
+        if (overlayType === 'scoring') {
+            // Remove scoring legend when overlay is hidden
+            const existingLegend = document.querySelector('.scoring-legend');
+            if (existingLegend) {
+                existingLegend.remove();
+            }
+        }
+        
         console.log(`${overlayType} overlay hidden`);
     }
     
@@ -209,6 +247,12 @@ class SemanticOverlaysManager {
      * Load overlay data from backend
      */
     async loadOverlayData(overlayType) {
+        // Special handling for scoring overlay
+        if (overlayType === 'scoring') {
+            await this.loadScoringOverlayData();
+            return;
+        }
+        
         const center = this.map.getCenter();
         const zoom = this.map.getZoom();
         
@@ -247,6 +291,12 @@ class SemanticOverlaysManager {
      * Render overlay data on the map
      */
     renderOverlayData(overlayType, data) {
+        // Special handling for scoring overlay
+        if (overlayType === 'scoring') {
+            this.renderScoringOverlay(data);
+            return;
+        }
+        
         const layerGroup = this.overlayLayers[overlayType];
         const config = this.overlayConfigs[overlayType];
         
@@ -491,6 +541,212 @@ class SemanticOverlaysManager {
      */
     getAvailableOverlayTypes() {
         return Object.keys(this.overlayConfigs);
+    }
+    
+    /**
+     * Set current session ID for scoring overlay
+     */
+    setCurrentSession(sessionId) {
+        this.currentSessionId = sessionId;
+        console.log(`Set current session for scoring overlay: ${sessionId}`);
+    }
+    
+    /**
+     * Load scoring overlay data from backend
+     */
+    async loadScoringOverlayData() {
+        console.log('loadScoringOverlayData called');
+        console.log('Current session ID:', this.currentSessionId);
+        
+        if (!this.currentSessionId) {
+            throw new Error('No session ID set for scoring overlay. Please start a route first.');
+        }
+        
+        const scoreType = this.overlayConfigs.scoring.currentScoreType;
+        const url = `/api/scoring-overlay/${this.currentSessionId}?score_type=${scoreType}`;
+        
+        console.log(`Fetching scoring data from: ${url}`);
+        
+        // Fetch scoring data from backend
+        const response = await fetch(url);
+        
+        console.log(`Response status: ${response.status}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+            throw new Error(errorData.detail || 'Failed to load scoring overlay');
+        }
+        
+        const data = await response.json();
+        console.log('Scoring data received:', data);
+        
+        if (data.total_nodes === 0) {
+            console.log('No scored nodes found for current session');
+            throw new Error('No scored nodes found. Please generate some candidates first by starting a route.');
+        }
+        
+        // Render the scoring overlay
+        this.renderScoringOverlay(data);
+        
+        console.log(`Loaded scoring overlay: ${data.total_nodes} nodes (${scoreType})`);
+    }
+    
+    /**
+     * Render scoring overlay on the map
+     */
+    renderScoringOverlay(data) {
+        const layerGroup = this.overlayLayers.scoring;
+        
+        // Clear existing data
+        layerGroup.clearLayers();
+        
+        if (!data.nodes || data.nodes.length === 0) {
+            console.log('No scoring nodes to render');
+            return;
+        }
+        
+        const { nodes, score_range } = data;
+        
+        // Create circle markers for each scored node
+        nodes.forEach(node => {
+            const color = this.getScoreColor(node.score, score_range.min, score_range.max);
+            
+            const marker = L.circleMarker([node.lat, node.lon], {
+                radius: 8,
+                fillColor: color,
+                color: '#000',
+                weight: 1,
+                opacity: 0.8,
+                fillOpacity: 0.7,
+                className: 'scoring-overlay-marker'
+            });
+            
+            // Create detailed popup
+            const popupContent = this.createScoringPopup(node, data);
+            marker.bindPopup(popupContent, { maxWidth: 300, className: 'scoring-popup' });
+            
+            layerGroup.addLayer(marker);
+        });
+        
+        // Create and show legend
+        this.createScoringLegend(data);
+        
+        console.log(`Rendered ${nodes.length} scoring markers`);
+    }
+    
+    /**
+     * Create popup content for scoring markers
+     */
+    createScoringPopup(node, data) {
+        return `
+            <div class="overlay-popup scoring-popup">
+                <h4>🎯 Algorithm Score</h4>
+                <div class="score-details">
+                    <p><strong>${data.score_type}:</strong> ${node.score.toFixed(3)}</p>
+                    <p><strong>Overall Score:</strong> ${node.overall_score.toFixed(3)}</p>
+                    <p><strong>Location:</strong> ${node.lat.toFixed(6)}, ${node.lon.toFixed(6)}</p>
+                </div>
+                <hr>
+                <div class="explanation">
+                    <strong>Why this score?</strong><br>
+                    ${node.explanation}
+                </div>
+                <hr>
+                <div class="feature-scores">
+                    <strong>Feature Breakdown:</strong><br>
+                    ${Object.entries(node.feature_scores)
+                        .map(([feature, score]) => `<span class="feature-score">${feature}: ${score.toFixed(3)}</span>`)
+                        .join('<br>')}
+                </div>
+            </div>
+        `;
+    }
+    
+    /**
+     * Get color for score visualization
+     */
+    getScoreColor(score, minScore, maxScore) {
+        if (maxScore === minScore) {
+            return '#ffff00'; // Yellow for uniform scores
+        }
+        
+        const normalized = (score - minScore) / (maxScore - minScore);
+        
+        // Color gradient from red (low) to yellow (medium) to green (high)
+        if (normalized < 0.5) {
+            const ratio = normalized * 2;
+            const red = 255;
+            const green = Math.round(ratio * 255);
+            return `rgb(${red}, ${green}, 0)`;
+        } else {
+            const ratio = (normalized - 0.5) * 2;
+            const red = Math.round(255 * (1 - ratio));
+            const green = 255;
+            return `rgb(${red}, ${green}, 0)`;
+        }
+    }
+    
+    /**
+     * Create and display scoring legend
+     */
+    createScoringLegend(data) {
+        // Remove existing legend
+        const existingLegend = document.querySelector('.scoring-legend');
+        if (existingLegend) {
+            existingLegend.remove();
+        }
+        
+        // Create new legend
+        const legend = document.createElement('div');
+        legend.className = 'scoring-legend overlay-legend';
+        legend.innerHTML = `
+            <h4>🎯 ${data.score_type} Scores</h4>
+            <div class="legend-scale">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${this.getScoreColor(data.score_range.max, data.score_range.min, data.score_range.max)}"></div>
+                    <span>High (${data.score_range.max.toFixed(3)})</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${this.getScoreColor((data.score_range.max + data.score_range.min) / 2, data.score_range.min, data.score_range.max)}"></div>
+                    <span>Medium (${((data.score_range.max + data.score_range.min) / 2).toFixed(3)})</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${this.getScoreColor(data.score_range.min, data.score_range.min, data.score_range.max)}"></div>
+                    <span>Low (${data.score_range.min.toFixed(3)})</span>
+                </div>
+            </div>
+            <p class="legend-info">${data.total_nodes} evaluated locations</p>
+        `;
+        
+        // Add to map
+        document.body.appendChild(legend);
+        
+        // Position the legend
+        legend.style.position = 'fixed';
+        legend.style.bottom = '20px';
+        legend.style.right = '20px';
+        legend.style.zIndex = '1000';
+    }
+    
+    /**
+     * Change scoring overlay type
+     */
+    async changeScoringType(scoreType) {
+        this.overlayConfigs.scoring.currentScoreType = scoreType;
+        
+        if (this.overlayStates.scoring) {
+            // Reload if currently visible
+            await this.loadScoringOverlayData();
+        }
+        
+        console.log(`Changed scoring type to: ${scoreType}`);
+    }
+    
+    /**
+     * Get available score types for scoring overlay
+     */
+    getAvailableScoringTypes() {
+        return this.overlayConfigs.scoring.scoreTypes;
     }
 }
 
