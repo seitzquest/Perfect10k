@@ -161,16 +161,23 @@ class InteractiveMapEditor {
      * Set up scoring overlay specific controls
      */
     setupScoringOverlayControls() {
-        // Show/hide scoring controls when overlay is toggled
+        // Show/hide scoring controls when overlay is toggled (desktop and mobile)
         const scoringControls = document.getElementById('scoring-controls');
+        const scoringControlsMobile = document.getElementById('scoring-controls-mobile');
         const scoringTypeSelect = document.getElementById('scoring-type-select');
+        const scoringTypeSelectMobile = document.getElementById('scoring-type-select-mobile');
         
-        if (scoringControls) {
+        if (scoringControls || scoringControlsMobile) {
             // Monitor scoring overlay state changes
             const checkScoringState = () => {
                 if (this.semanticOverlays) {
                     const isVisible = this.semanticOverlays.overlayStates.scoring;
-                    scoringControls.style.display = isVisible ? 'block' : 'none';
+                    if (scoringControls) {
+                        scoringControls.style.display = isVisible ? 'block' : 'none';
+                    }
+                    if (scoringControlsMobile) {
+                        scoringControlsMobile.style.display = isVisible ? 'block' : 'none';
+                    }
                 }
             };
             
@@ -178,13 +185,36 @@ class InteractiveMapEditor {
             setInterval(checkScoringState, 500);
         }
         
-        // Handle score type changes
+        // Handle score type changes (desktop)
         if (scoringTypeSelect) {
             scoringTypeSelect.addEventListener('change', async (e) => {
                 const newScoreType = e.target.value;
                 if (this.semanticOverlays) {
                     try {
                         await this.semanticOverlays.changeScoringType(newScoreType);
+                        // Sync mobile dropdown
+                        if (scoringTypeSelectMobile) {
+                            scoringTypeSelectMobile.value = newScoreType;
+                        }
+                    } catch (error) {
+                        console.error('Failed to change scoring type:', error);
+                        this.showMessage('Failed to change scoring type: ' + error.message, 'error');
+                    }
+                }
+            });
+        }
+        
+        // Handle score type changes (mobile)
+        if (scoringTypeSelectMobile) {
+            scoringTypeSelectMobile.addEventListener('change', async (e) => {
+                const newScoreType = e.target.value;
+                if (this.semanticOverlays) {
+                    try {
+                        await this.semanticOverlays.changeScoringType(newScoreType);
+                        // Sync desktop dropdown
+                        if (scoringTypeSelect) {
+                            scoringTypeSelect.value = newScoreType;
+                        }
                     } catch (error) {
                         console.error('Failed to change scoring type:', error);
                         this.showMessage('Failed to change scoring type: ' + error.message, 'error');
@@ -199,11 +229,19 @@ class InteractiveMapEditor {
      */
     enableScoringOverlay() {
         const scoringBtn = document.getElementById('overlay-toggle-scoring');
+        const scoringCheckbox = document.getElementById('overlay-checkbox-scoring');
+        
+        // Enable desktop button
         if (scoringBtn) {
             scoringBtn.disabled = false;
             scoringBtn.title = 'Visualize algorithm scoring';
             scoringBtn.classList.remove('disabled');
-            }
+        }
+        
+        // Enable mobile checkbox
+        if (scoringCheckbox) {
+            scoringCheckbox.disabled = false;
+        }
     }
     
     /**
@@ -211,20 +249,22 @@ class InteractiveMapEditor {
      */
     disableScoringOverlay() {
         const scoringBtn = document.getElementById('overlay-toggle-scoring');
+        const scoringCheckbox = document.getElementById('overlay-checkbox-scoring');
+        
+        // First hide the overlay if it's currently visible
+        if (this.semanticOverlays && this.semanticOverlays.overlayStates.scoring) {
+            this.semanticOverlays.hideOverlay('scoring');
+        }
+        
+        // Update the overlay state to false
+        if (this.semanticOverlays) {
+            this.semanticOverlays.overlayStates.scoring = false;
+            // Use the semantic overlay's own UI update method
+            this.semanticOverlays.updateToggleUI('scoring', false);
+        }
+        
+        // Disable desktop button
         if (scoringBtn) {
-            // First hide the overlay if it's currently visible
-            if (this.semanticOverlays && this.semanticOverlays.overlayStates.scoring) {
-                this.semanticOverlays.hideOverlay('scoring');
-            }
-            
-            // Update the overlay state to false
-            if (this.semanticOverlays) {
-                this.semanticOverlays.overlayStates.scoring = false;
-                // Use the semantic overlay's own UI update method
-                this.semanticOverlays.updateToggleUI('scoring', false);
-            }
-            
-            // Then disable the button
             scoringBtn.disabled = true;
             scoringBtn.title = 'Start a route first to visualize algorithm scoring';
             scoringBtn.classList.add('disabled');
@@ -232,9 +272,15 @@ class InteractiveMapEditor {
             // Force remove active state visually (in case updateToggleUI didn't work)
             scoringBtn.classList.remove('active');
             scoringBtn.setAttribute('aria-pressed', 'false');
-            
-            console.log('Scoring overlay disabled - button classes:', scoringBtn.className);
         }
+        
+        // Disable mobile checkbox
+        if (scoringCheckbox) {
+            scoringCheckbox.disabled = true;
+            scoringCheckbox.checked = false;
+        }
+        
+        console.log('Scoring overlay disabled (desktop + mobile)');
     }
     
     /**

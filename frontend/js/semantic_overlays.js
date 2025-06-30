@@ -607,8 +607,8 @@ class SemanticOverlaysManager {
             layerGroup.addLayer(marker);
         });
         
-        // Create and show legend
-        this.createScoringLegend(data);
+        // Create and show legend (disabled for simplicity of UI)
+        // this.createScoringLegend(data);
         
         console.log(`Rendered ${nodes.length} scoring markers`);
     }
@@ -702,7 +702,7 @@ class SemanticOverlaysManager {
         
         // Position the legend
         legend.style.position = 'fixed';
-        legend.style.bottom = '20px';
+        legend.style.bottom = '120px';
         legend.style.right = '20px';
         legend.style.zIndex = '1000';
     }

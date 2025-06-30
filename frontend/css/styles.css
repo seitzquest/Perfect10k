@@ -1353,6 +1353,45 @@ label {
     border-color: var(--primary-light);
 }
 
+/* Mobile Scoring Controls */
+.scoring-controls-mobile {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--surface-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-medium);
+}
+
+.scoring-controls-mobile label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.scoring-type-select-mobile {
+    width: 100%;
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.scoring-type-select-mobile:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(98, 111, 71, 0.1);
+}
+
+.scoring-type-select-mobile:hover {
+    border-color: var(--primary-light);
+}
+
 /* Scoring Legend */
 .scoring-legend {
     background: rgba(255, 255, 255, 0.95);
