@@ -908,13 +908,16 @@ class InteractiveMapEditor {
      * Update final route statistics
      */
     updateFinalRouteStats(stats) {
-        document.getElementById('routeDistance').textContent = `${(stats.total_distance / 1000).toFixed(1)} km`;
-        document.getElementById('routeProgress').textContent = '100%';
-        document.getElementById('routeArea').textContent = `${Math.round(stats.area || 0).toLocaleString()} m²`;
-        document.getElementById('routeNodes').textContent = stats.total_nodes || 0;
-        document.getElementById('routeConvexity').textContent = `${Math.round((stats.convexity || 0) * 100)}%`;
-        document.getElementById('routeScore').textContent = `${Math.round((stats.score || 0) * 100)}%`;
-        document.getElementById('routeConflicts').textContent = stats.conflicts || 0;
+        // Only update elements that still exist in the HTML
+        const routeDistanceEl = document.getElementById('routeDistance');
+        const routeProgressEl = document.getElementById('routeProgress');
+        
+        if (routeDistanceEl) {
+            routeDistanceEl.textContent = `${(stats.total_distance / 1000).toFixed(1)} km`;
+        }
+        if (routeProgressEl) {
+            routeProgressEl.textContent = '100%';
+        }
         
         // Update mobile distance display with final stats
         this.updateMobileDistanceDisplay(stats.total_distance / 1000, 100);

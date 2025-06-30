@@ -476,6 +476,12 @@ class Perfect10kApp {
         // Hide route stats
         document.getElementById('routeStats').style.display = 'none';
         
+        // Hide mobile download button
+        const downloadToggleMobile = document.getElementById('downloadToggleMobile');
+        if (downloadToggleMobile) {
+            downloadToggleMobile.style.display = 'none';
+        }
+        
         // Clear API session
         window.apiClient.clearSession();
         
@@ -651,11 +657,14 @@ class Perfect10kApp {
      * Export route as GPX
      */
     async exportRoute() {
-        // Check if route is completed
-        if (this.appState !== 'completed' || !this.mapEditor.currentRoute) {
-            this.showMessage('Please complete your route first before exporting', 'warning');
+        // Check if route exists
+        if (!this.mapEditor.currentRoute) {
+            this.showMessage('No route to export', 'warning');
             return;
         }
+        
+        // Debug: Log current app state
+        console.log('Export route - App state:', this.appState, 'Route exists:', !!this.mapEditor.currentRoute);
         
         try {
             // Create GPX content
@@ -796,6 +805,35 @@ ${trackPoints}        </trkseg>
         
         // Show route stats if not already visible
         document.getElementById('routeStats').style.display = 'block';
+        
+        // Show mobile download button with green styling
+        const downloadToggleMobile = document.getElementById('downloadToggleMobile');
+        if (downloadToggleMobile) {
+            downloadToggleMobile.style.display = 'inline-flex';
+            downloadToggleMobile.style.backgroundColor = '#7A8F5A';
+            downloadToggleMobile.style.color = 'white';
+            downloadToggleMobile.disabled = false;
+        }
+        
+        console.log('Route completed - App state set to:', this.appState);
+        
+        // Debug: Check all mobile buttons
+        console.log('=== MOBILE BUTTON DEBUG ===');
+        const allButtons = document.querySelectorAll('button');
+        console.log('Total buttons found:', allButtons.length);
+        allButtons.forEach((btn, i) => {
+            if (btn.id) {
+                console.log(`Button ${i}: id="${btn.id}", display="${btn.style.display}", classes="${btn.className}"`);
+            }
+        });
+        
+        // Specifically check for download button
+        const downloadBtn = document.getElementById('downloadToggleMobile');
+        console.log('downloadToggleMobile element:', downloadBtn);
+        if (downloadBtn) {
+            console.log('downloadToggleMobile parent:', downloadBtn.parentElement);
+            console.log('downloadToggleMobile computed style:', window.getComputedStyle(downloadBtn).display);
+        }
     }
     
     /**

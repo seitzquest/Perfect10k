@@ -1487,3 +1487,21 @@ label {
     display: none; /* Hide checkmark on disabled active buttons */
 }
 
+/* Mobile download button - initially hidden until route is completed */
+#downloadToggleMobile {
+    display: none;
+}
+
+/* Mobile download button when route is completed - make it green like the start button */
+#downloadToggleMobile.route-completed {
+    display: inline-flex !important;
+    background: var(--success, #7A8F5A) !important;
+    color: white !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+#downloadToggleMobile.route-completed:hover {
+    background: var(--primary-dark, #4A5535) !important;
+}
+
