@@ -651,8 +651,9 @@ class Perfect10kApp {
      * Export route as GPX
      */
     async exportRoute() {
-        if (!this.mapEditor.currentRoute) {
-            this.showMessage('No route to export', 'warning');
+        // Check if route is completed
+        if (this.appState !== 'completed' || !this.mapEditor.currentRoute) {
+            this.showMessage('Please complete your route first before exporting', 'warning');
             return;
         }
         

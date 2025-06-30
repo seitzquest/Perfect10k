@@ -845,12 +845,17 @@ class InteractiveMapEditor {
      */
     updateRouteStats(stats) {
         document.getElementById('routeDistance').textContent = `${(stats.current_distance / 1000).toFixed(1)} km`;
-        document.getElementById('routeProgress').textContent = `${Math.round(stats.progress * 100)}%`;
-        document.getElementById('estimatedDistance').textContent = `${(stats.estimated_final_distance / 1000).toFixed(1)} km`;
-        document.getElementById('waypointsCount').textContent = stats.waypoints_count;
+        
+        // Calculate meaningful progress: current_distance / target_distance
+        const targetDistance = this.getTargetDistance(); // in meters
+        const currentDistance = stats.current_distance || 0; // in meters
+        const progress = Math.min(currentDistance / targetDistance, 1.0); // Cap at 100%
+        const progressPercent = Math.round(progress * 100);
+        
+        document.getElementById('routeProgress').textContent = `${progressPercent}%`;
         
         // Update mobile distance display
-        this.updateMobileDistanceDisplay(stats.current_distance / 1000, stats.progress * 100);
+        this.updateMobileDistanceDisplay(stats.current_distance / 1000, progressPercent);
     }
     
     /**
