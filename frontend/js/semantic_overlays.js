@@ -166,23 +166,16 @@ class SemanticOverlaysManager {
      * Toggle overlay visibility
      */
     async toggleOverlay(overlayType) {
-        console.log(`Toggling ${overlayType} overlay`);
-        
         if (!this.overlayConfigs[overlayType]) {
             console.error(`Unknown overlay type: ${overlayType}`);
             return;
         }
         
         const isCurrentlyVisible = this.overlayStates[overlayType];
-        console.log(`${overlayType} current state: ${isCurrentlyVisible}`);
         
         if (isCurrentlyVisible) {
-            // Hide overlay
-            console.log(`Hiding ${overlayType} overlay`);
             this.hideOverlay(overlayType);
         } else {
-            // Show overlay - load data if needed
-            console.log(`Showing ${overlayType} overlay`);
             await this.showOverlay(overlayType);
         }
         
@@ -194,10 +187,7 @@ class SemanticOverlaysManager {
      * Show a specific overlay
      */
     async showOverlay(overlayType) {
-        console.log(`showOverlay called for ${overlayType}`);
-        
         if (this.loadingOverlays.has(overlayType)) {
-            console.log(`${overlayType} already loading`);
             return; // Already loading
         }
         
@@ -205,7 +195,6 @@ class SemanticOverlaysManager {
             this.loadingOverlays.add(overlayType);
             this.showLoadingIndicator(overlayType);
             
-            console.log(`Loading overlay data for ${overlayType}`);
             // Load overlay data
             await this.loadOverlayData(overlayType);
             
@@ -213,7 +202,7 @@ class SemanticOverlaysManager {
             this.overlayLayers[overlayType].addTo(this.map);
             this.overlayStates[overlayType] = true;
             
-            console.log(`${overlayType} overlay shown successfully`);
+            console.log(`${overlayType} overlay shown`);
             
         } catch (error) {
             console.error(`Failed to show ${overlayType} overlay:`, error);
@@ -313,7 +302,7 @@ class SemanticOverlaysManager {
         
         // Create GeoJSON layer
         const geoJsonLayer = L.geoJSON(data, {
-            style: (feature) => ({
+            style: (_feature) => ({
                 ...style,
                 // Add interactive styling
                 className: `semantic-overlay-${overlayType}`
@@ -548,16 +537,12 @@ class SemanticOverlaysManager {
      */
     setCurrentSession(sessionId) {
         this.currentSessionId = sessionId;
-        console.log(`Set current session for scoring overlay: ${sessionId}`);
     }
     
     /**
      * Load scoring overlay data from backend
      */
     async loadScoringOverlayData() {
-        console.log('loadScoringOverlayData called');
-        console.log('Current session ID:', this.currentSessionId);
-        
         if (!this.currentSessionId) {
             throw new Error('No session ID set for scoring overlay. Please start a route first.');
         }
@@ -565,12 +550,8 @@ class SemanticOverlaysManager {
         const scoreType = this.overlayConfigs.scoring.currentScoreType;
         const url = `/api/scoring-overlay/${this.currentSessionId}?score_type=${scoreType}`;
         
-        console.log(`Fetching scoring data from: ${url}`);
-        
         // Fetch scoring data from backend
         const response = await fetch(url);
-        
-        console.log(`Response status: ${response.status}`);
         
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
@@ -578,11 +559,9 @@ class SemanticOverlaysManager {
         }
         
         const data = await response.json();
-        console.log('Scoring data received:', data);
         
         if (data.total_nodes === 0) {
-            console.log('No scored nodes found for current session');
-            throw new Error('No scored nodes found. Please generate some candidates first by starting a route.');
+            throw new Error('No scored nodes found. Please generate some candidates first by adding waypoints to your route.');
         }
         
         // Render the scoring overlay

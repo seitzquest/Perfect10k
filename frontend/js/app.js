@@ -470,6 +470,9 @@ class Perfect10kApp {
         this.mapEditor.waypoints = [];
         this.mapEditor.sessionId = null;
         
+        // Explicitly disable scoring overlay on restart
+        this.mapEditor.disableScoringOverlay();
+        
         // Hide route stats
         document.getElementById('routeStats').style.display = 'none';
         

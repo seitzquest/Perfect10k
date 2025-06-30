@@ -1420,3 +1420,31 @@ label {
     color: var(--text-secondary);
 }
 
+/* Disabled Overlay Button Styles */
+.overlay-toggle-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: var(--surface-secondary);
+    color: var(--text-tertiary);
+}
+
+.overlay-toggle-btn.disabled:hover {
+    background-color: var(--surface-secondary);
+    color: var(--text-tertiary);
+    transform: none;
+}
+
+.overlay-toggle-btn.disabled .overlay-icon {
+    opacity: 0.6;
+}
+
+/* Ensure disabled buttons don't show active state */
+.overlay-toggle-btn.disabled.active {
+    background-color: var(--surface-secondary);
+    color: var(--text-tertiary);
+}
+
+.overlay-toggle-btn.disabled.active::after {
+    display: none; /* Hide checkmark on disabled active buttons */
+}
+

@@ -109,13 +109,23 @@ class InteractiveMapEditor {
             overlayTypes.forEach(overlayType => {
                 const toggleBtn = document.getElementById(`overlay-toggle-${overlayType}`);
                 if (toggleBtn) {
-                    console.log(`Setting up ${overlayType} toggle button`);
+                    // Special handling for scoring overlay
+                    if (overlayType === 'scoring') {
+                        // Initially disable scoring button
+                        toggleBtn.disabled = true;
+                        toggleBtn.title = 'Start a route first to visualize algorithm scoring';
+                        toggleBtn.classList.add('disabled');
+                    }
+                    
                     toggleBtn.addEventListener('click', () => {
-                        console.log(`${overlayType} toggle clicked`);
+                        // Prevent clicking on disabled scoring button
+                        if (overlayType === 'scoring' && toggleBtn.disabled) {
+                            this.showMessage('Please start a route first to visualize algorithm scoring', 'info');
+                            return;
+                        }
+                        
                         this.semanticOverlays.toggleOverlay(overlayType);
                     });
-                } else {
-                    console.warn(`Toggle button not found for ${overlayType}`);
                 }
                 
                 // Set up mobile checkboxes
@@ -181,6 +191,49 @@ class InteractiveMapEditor {
                     }
                 }
             });
+        }
+    }
+    
+    /**
+     * Enable scoring overlay button when session is active
+     */
+    enableScoringOverlay() {
+        const scoringBtn = document.getElementById('overlay-toggle-scoring');
+        if (scoringBtn) {
+            scoringBtn.disabled = false;
+            scoringBtn.title = 'Visualize algorithm scoring';
+            scoringBtn.classList.remove('disabled');
+            }
+    }
+    
+    /**
+     * Disable scoring overlay button when no session
+     */
+    disableScoringOverlay() {
+        const scoringBtn = document.getElementById('overlay-toggle-scoring');
+        if (scoringBtn) {
+            // First hide the overlay if it's currently visible
+            if (this.semanticOverlays && this.semanticOverlays.overlayStates.scoring) {
+                this.semanticOverlays.hideOverlay('scoring');
+            }
+            
+            // Update the overlay state to false
+            if (this.semanticOverlays) {
+                this.semanticOverlays.overlayStates.scoring = false;
+                // Use the semantic overlay's own UI update method
+                this.semanticOverlays.updateToggleUI('scoring', false);
+            }
+            
+            // Then disable the button
+            scoringBtn.disabled = true;
+            scoringBtn.title = 'Start a route first to visualize algorithm scoring';
+            scoringBtn.classList.add('disabled');
+            
+            // Force remove active state visually (in case updateToggleUI didn't work)
+            scoringBtn.classList.remove('active');
+            scoringBtn.setAttribute('aria-pressed', 'false');
+            
+            console.log('Scoring overlay disabled - button classes:', scoringBtn.className);
         }
     }
     
@@ -271,6 +324,9 @@ class InteractiveMapEditor {
                 if (this.semanticOverlays) {
                     this.semanticOverlays.setCurrentSession(this.sessionId);
                 }
+                
+                // Enable scoring overlay button now that we have a session
+                this.enableScoringOverlay();
                 this.waypoints = [{lat, lon}];
                 
                 // Clear existing route display (but keep start marker) - but don't reset routeBuilding
@@ -764,6 +820,10 @@ class InteractiveMapEditor {
         this.clearRouteLayers();
         this.routeBuilding = false;
         this.userSetZoom = false;
+        this.sessionId = null;
+        
+        // Disable scoring overlay button when route is cleared
+        this.disableScoringOverlay();
         
         // Reset mobile UI to show location controls
         const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
