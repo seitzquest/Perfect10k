@@ -85,7 +85,12 @@ class LoadingAnimationManager {
                 }
                 
                 .loading-content {
-                    padding: 8px 12px;
+                    padding: 16px 20px;
+                    min-width: 100px;
+                    min-height: 50px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                 }
                 
                 .loading-overlay {
@@ -94,6 +99,16 @@ class LoadingAnimationManager {
                     transform: translate(-50%, -50%);
                     width: auto;
                     right: auto;
+                }
+                
+                .loading-header {
+                    margin-bottom: 0;
+                    justify-content: center;
+                }
+                
+                .loading-spinner {
+                    width: 64px;
+                    height: 24px;
                 }
             }
             

@@ -32,6 +32,13 @@
     background: rgba(249, 250, 251, 0.98);
 }
 
+/* Hide old loading overlay on mobile - use new loading animation system instead */
+@media (max-width: 640px) {
+    .loading-overlay {
+        display: none !important;
+    }
+}
+
 /* Location selection overlay - hidden by default */
 .location-overlay {
     display: none;
