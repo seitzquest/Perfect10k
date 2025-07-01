@@ -15,17 +15,26 @@ WorkingDirectory=/var/www/Perfect10k
 # Ensure Docker is accessible
 ExecStartPre=/bin/bash -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
 
-# Stop any existing container first
-ExecStartPre=-/usr/bin/docker-compose down
+# Stop and remove any existing container
+ExecStartPre=-/usr/bin/docker stop perfect10k-app
+ExecStartPre=-/usr/bin/docker rm perfect10k-app
 
-# Build only if image doesn't exist
-ExecStartPre=/bin/bash -c 'docker image inspect perfect10k-perfect10k-app >/dev/null 2>&1 || docker-compose build'
+# Create necessary directories
+ExecStartPre=/bin/mkdir -p /var/www/Perfect10k/logs
+ExecStartPre=/bin/mkdir -p /var/www/Perfect10k/cache
 
 # Start the container
-ExecStart=/usr/bin/docker-compose up -d
+ExecStart=/usr/bin/docker run -d \
+    --name perfect10k-app \
+    --restart unless-stopped \
+    -p 8000:8000 \
+    -v /var/www/Perfect10k/logs:/app/logs \
+    -v /var/www/Perfect10k/cache:/app/backend/cache \
+    perfect10k-app:latest
 
 # Stop the container
-ExecStop=/usr/bin/docker-compose down
+ExecStop=/usr/bin/docker stop perfect10k-app
+ExecStop=/usr/bin/docker rm perfect10k-app
 
 # Health check removed - service takes too long to start for fixed timeout
 

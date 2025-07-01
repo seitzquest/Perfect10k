@@ -138,3 +138,5 @@ logs/
 *.db
 tiles/
 spatial_tiles/
+
+*.tar
