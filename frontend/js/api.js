@@ -59,7 +59,7 @@ class ApiClient {
                         minimalistic: true,
                         loadingOptions: {
                             title: "Finding Perfect Route",
-                            description: `Analyzing natural features for ${preference} routes...`
+                            description: `Analyzing natural features for ${preference} routes... This may take several minutes for new areas.`
                         }
                     }
                 );
@@ -634,7 +634,7 @@ class ApiClient {
             try {
                 const response = await fetch(url, {
                     ...options,
-                    timeout: 300000 // 5 minute timeout
+                    timeout: 1800000 // 30 minute timeout for new areas
                 });
                 
                 if (!response.ok) {
