@@ -146,7 +146,7 @@ Available cities: {', '.join(CITIES.keys())}
         print("\nDetailed Results:")
         for res in result['results']:
             location = res['location']
-            city_name = res.get('city_name', f"({location['lat']:.4f}, {location['lon']:.4f})")
+            city_name = res.get('city_name') or f"({location['lat']:.4f}, {location['lon']:.4f})"
             status_emoji = {
                 'started': '🔄',
                 'already_cached': '✅',
