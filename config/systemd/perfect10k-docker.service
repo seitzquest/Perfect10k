@@ -21,7 +21,8 @@ ExecStartPre=-/usr/bin/docker rm perfect10k-app
 
 # Create necessary directories
 ExecStartPre=/bin/mkdir -p /var/www/Perfect10k/logs
-ExecStartPre=/bin/mkdir -p /var/www/Perfect10k/cache
+ExecStartPre=/bin/mkdir -p /var/www/Perfect10k/backend/cache
+ExecStartPre=/bin/mkdir -p /var/www/Perfect10k/backend/storage
 
 # Start the container
 ExecStart=/usr/bin/docker run -d \
@@ -29,7 +30,8 @@ ExecStart=/usr/bin/docker run -d \
     --restart unless-stopped \
     -p 8000:8000 \
     -v /var/www/Perfect10k/logs:/app/logs \
-    -v /var/www/Perfect10k/cache:/app/backend/cache \
+    -v /var/www/Perfect10k/backend/cache:/app/backend/cache \
+    -v /var/www/Perfect10k/backend/storage:/app/backend/storage \
     perfect10k-app:latest
 
 # Stop the container
