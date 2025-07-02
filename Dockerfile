@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_CACHE_DIR=/tmp/uv-cache
 ENV UV_HTTP_TIMEOUT=1800
+ENV RASPBERRY_PI_MODE=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -51,5 +52,5 @@ EXPOSE 8000
 # Set working directory to backend for module imports
 WORKDIR /app/backend
 
-# Run the application with Raspberry Pi optimized settings and long timeouts
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-keep-alive", "1800", "--timeout-graceful-shutdown", "60"]
+# Run the application with Raspberry Pi optimized settings and long timeouts (single worker for stability)
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "1800", "--timeout-graceful-shutdown", "60"]

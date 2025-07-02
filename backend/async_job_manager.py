@@ -84,7 +84,7 @@ class AsyncJobManager:
     - Real-time progress tracking
     """
     
-    def __init__(self, max_workers: int = 4, persistence_dir: str = "cache/jobs"):
+    def __init__(self, max_workers: int = 1, persistence_dir: str = "cache/jobs"):
         self.max_workers = max_workers
         self.persistence_dir = Path(persistence_dir)
         self.persistence_dir.mkdir(parents=True, exist_ok=True)
