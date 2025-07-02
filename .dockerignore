@@ -31,8 +31,9 @@ Thumbs.db
 *.log
 logs/
 
-# Cache
+# Cache and storage (mounted as volumes)
 backend/cache/
+backend/storage/
 cache/
 
 # Config files we don't need in container
