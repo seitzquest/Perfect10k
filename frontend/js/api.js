@@ -26,66 +26,10 @@ class ApiClient {
     /**
      * Start a new interactive routing session with loading animation (async version)
      */
-    async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000, showLoading = false) {
-        const requestData = {
-            lat: lat,
-            lon: lon,
-            preference: preference,
-            target_distance: targetDistance
-        };
-        
+    async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
         try {
-            // Use async job approach with loading manager
-            if (window.loadingManager) {
-                const jobResponse = await this.makeRequest('/api/start-session-async', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                });
-                
-                // Check if job completed immediately
-                if (jobResponse.status === 'completed') {
-                    // Job completed immediately, no need to poll
-                    console.log('Job completed immediately, no polling needed');
-                    const response = jobResponse.result;
-                    
-                    // Store session ID from completed job (check both possible field names)
-                    this.currentSession = response.session_id || response.client_id;
-                    
-                    // Log performance info for debugging
-                    console.log('Async route generation completed:', response);
-                    console.log('Current session set to:', this.currentSession);
-                    
-                    return response;
-                }
-                
-                // Start loading animation and poll for results (only if requested)
-                if (showLoading) {
-                    window.loadingManager.showMinimalisticLoading();
-                    
-                    // Update the text to match our specific use case
-                    const titleEl = document.getElementById('loading-title');
-                    const descriptionEl = document.getElementById('loading-description');
-                    if (titleEl) titleEl.textContent = "Finding Perfect Route";
-                    if (descriptionEl) descriptionEl.textContent = `Analyzing natural features for ${preference} routes...`;
-                }
-                
-                const response = await this.pollJobUntilComplete(jobResponse.job_id);
-                
-                // Store session ID from completed job (check both possible field names)
-                this.currentSession = response.session_id || response.client_id;
-                
-                // Log performance info for debugging
-                console.log('Async route generation completed:', response);
-                console.log('Current session set to:', this.currentSession);
-                
-                return response;
-            } else {
-                // Fallback to synchronous version if loading manager not available
-                return this.startSessionSync(lat, lon, preference, targetDistance);
-            }
+            // Use synchronous approach to avoid job manager issues
+            return this.startSessionSync(lat, lon, preference, targetDistance);
             
         } catch (error) {
             console.error('Session start failed:', error);
