@@ -52,4 +52,4 @@ EXPOSE 8000
 WORKDIR /app/backend
 
 # Run the application with Raspberry Pi optimized settings
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--max-requests", "100", "--max-requests-jitter", "10"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

@@ -129,6 +129,11 @@ class SemanticScoringRequest(BaseModel):
     ensure_loaded_radius: float = 2.0  # km radius to ensure features are loaded
 
 
+class WarmCacheRequest(BaseModel):
+    locations: list[tuple[float, float]]  # List of (lat, lon) tuples to warm
+    city_names: list[str] | None = None  # Optional city names for reference
+
+
 # Utility function to generate client ID
 def get_client_id(request: Request, provided_id: str | None = None) -> str:
     """Generate or use provided client ID."""
@@ -1011,6 +1016,95 @@ async def get_coverage_info():
             "message": "Unable to determine coverage areas",
             "error": str(e)
         }
+
+
+@app.post("/api/warm-cache")
+async def warm_cache(request_data: WarmCacheRequest):
+    """Warm cache for specific locations to improve performance."""
+    ensure_file_logging()
+    
+    logger.info(f"Starting cache warming for {len(request_data.locations)} location(s)")
+    
+    # Import here to avoid startup delays
+    from async_job_manager import job_manager
+    
+    try:
+        # Start job manager if not running
+        await job_manager.start()
+        
+        # Get route builder instance
+        route_builder = get_route_builder()
+        
+        results = []
+        total_jobs = 0
+        
+        for i, (lat, lon) in enumerate(request_data.locations):
+            city_name = (request_data.city_names[i] if request_data.city_names 
+                        and i < len(request_data.city_names) else None)
+            location_name = city_name or f"({lat:.4f}, {lon:.4f})"
+            
+            logger.info(f"Starting cache warming for {location_name}")
+            
+            try:
+                # Use the existing cache warming functionality
+                if hasattr(route_builder, '_start_background_cache_warming'):
+                    warming_jobs = await route_builder._start_background_cache_warming(lat, lon)
+                    job_count = len(warming_jobs) if warming_jobs else 0
+                    
+                    results.append({
+                        "location": {"lat": lat, "lon": lon},
+                        "city_name": city_name,
+                        "status": "started" if job_count > 0 else "already_cached",
+                        "jobs_started": job_count,
+                        "message": f"Started {job_count} warming jobs" if job_count > 0 else "Already cached"
+                    })
+                    
+                    total_jobs += job_count
+                    
+                else:
+                    # Fallback: try to load graph directly to warm cache
+                    try:
+                        route_builder._get_graph_for_location(lat, lon)
+                        results.append({
+                            "location": {"lat": lat, "lon": lon},
+                            "city_name": city_name,
+                            "status": "loaded",
+                            "jobs_started": 0,
+                            "message": "Graph loaded successfully"
+                        })
+                    except Exception as load_error:
+                        results.append({
+                            "location": {"lat": lat, "lon": lon},
+                            "city_name": city_name,
+                            "status": "error",
+                            "jobs_started": 0,
+                            "message": f"Failed to load: {str(load_error)}"
+                        })
+                
+            except Exception as location_error:
+                logger.error(f"Failed to warm cache for {location_name}: {location_error}")
+                results.append({
+                    "location": {"lat": lat, "lon": lon},
+                    "city_name": city_name,
+                    "status": "error",
+                    "jobs_started": 0,
+                    "message": f"Error: {str(location_error)}"
+                })
+        
+        success_count = sum(1 for r in results if r["status"] in ["started", "already_cached", "loaded"])
+        
+        return {
+            "message": f"Cache warming initiated for {len(request_data.locations)} locations",
+            "total_jobs_started": total_jobs,
+            "locations_processed": len(request_data.locations),
+            "successful_locations": success_count,
+            "results": results,
+            "note": "Jobs are running in background. Use job status endpoints to monitor progress." if total_jobs > 0 else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Cache warming failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cache warming failed: {str(e)}") from e
 
 
 @app.get("/health")

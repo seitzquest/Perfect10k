@@ -155,7 +155,7 @@ class ApiClient {
      * Poll job status until completion
      */
     async pollJobUntilComplete(jobId) {
-        const maxAttempts = 120; // 2 minutes max (120 * 1 second)
+        const maxAttempts = 300; // 5 minutes max (300 * 1 second)
         let attempts = 0;
         
         // Show async job progress if loading manager available
@@ -204,7 +204,7 @@ class ApiClient {
         // Timeout
         window.loadingManager?.hideLoading();
         window.loadingManager?.removeBackgroundNotification();
-        throw new Error('Job timed out after 2 minutes');
+        throw new Error('Job timed out after 5 minutes');
     }
     
     /**
@@ -690,7 +690,7 @@ class ApiClient {
             try {
                 const response = await fetch(url, {
                     ...options,
-                    timeout: 30000 // 30 second timeout
+                    timeout: 300000 // 5 minute timeout
                 });
                 
                 if (!response.ok) {
