@@ -75,9 +75,9 @@ Available cities: {', '.join(CITIES.keys())}
     
     parser.add_argument('--url', default='http://localhost:8000', 
                        help='Backend server URL (default: http://localhost:8000)')
+    parser.add_argument('coordinates', nargs='*', help='Latitude and longitude pairs')
     
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('coordinates', nargs='*', help='Latitude and longitude pairs')
+    group = parser.add_mutually_exclusive_group()
     group.add_argument('--city', nargs='+', choices=CITIES.keys(), help='City names to warm')
     group.add_argument('--all-cities', action='store_true', help='Warm all predefined cities')
     group.add_argument('--cities', action='store_true', help='List available cities')
@@ -119,7 +119,8 @@ Available cities: {', '.join(CITIES.keys())}
                 return 1
     
     if not locations:
-        print("❌ Error: No locations specified")
+        print("❌ Error: No locations specified. Use coordinates, --city, or --all-cities")
+        print("For help: python warm_cache_api.py --help")
         return 1
     
     print(f"🚀 Starting cache warming for {len(locations)} location(s) via API...")
