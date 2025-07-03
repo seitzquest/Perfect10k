@@ -146,14 +146,23 @@ class CleanRouter:
 
             profiler.step("Generate initial candidates")
             # Generate initial candidates
+            step_distance = target_distance / 8.0
+            logger.info(f"Generating candidates from ({lat:.6f}, {lon:.6f}) with step distance {step_distance:.0f}m")
+            logger.info(f"Start node: {start_node}, excluding nodes: {[start_node]}")
+            
             candidates_result = generator.generate_candidates(
                 from_lat=lat,
                 from_lon=lon,
-                target_distance=target_distance / 8.0,  # First step is ~1/8 of total
+                target_distance=step_distance,  # First step is ~1/8 of total
                 preference=preference,
                 exclude_nodes=[start_node],
                 existing_route_nodes=[]  # No existing route yet
             )
+            
+            logger.info(f"Candidate generation returned {len(candidates_result.candidates)} candidates")
+            if len(candidates_result.candidates) == 0:
+                logger.warning(f"Zero candidates returned! Search stats: {candidates_result.search_stats}")
+                logger.warning(f"Generation time: {candidates_result.generation_time_ms}ms")
 
             profiler.step("Convert to API format")
             # Convert to API format

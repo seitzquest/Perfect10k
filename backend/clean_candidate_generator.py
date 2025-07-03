@@ -171,15 +171,19 @@ class CleanCandidateGenerator:
 
         exclude_nodes = set(exclude_nodes or [])
 
-        logger.debug(f"Generating candidates from ({from_lat:.6f}, {from_lon:.6f}) "
-                    f"with target distance {target_distance}m")
+        logger.info(f"Generating candidates from ({from_lat:.6f}, {from_lon:.6f}) "
+                    f"with target distance {target_distance}m, excluding {len(exclude_nodes)} nodes")
 
         # Step 1: Find candidate nodes in target distance range
         candidate_nodes = self._find_candidate_nodes(
             from_lat, from_lon, target_distance, exclude_nodes, existing_route_nodes
         )
 
+        logger.info(f"Found {len(candidate_nodes)} candidate nodes in target area")
+        
         if not candidate_nodes:
+            logger.warning(f"No candidate nodes found! Target distance: {target_distance}m, "
+                         f"Exclude nodes: {len(exclude_nodes)}, Route nodes: {len(existing_route_nodes)}")
             return CandidateGenerationResult(
                 candidates=[],
                 generation_time_ms=(time.time() - start_time) * 1000,
@@ -251,6 +255,9 @@ class CleanCandidateGenerator:
             from_lat, from_lon, max_distance
         )
 
+        logger.info(f"Spatial grid returned {len(nearby_nodes)} nearby nodes within {max_distance}m")
+        logger.info(f"Distance filter: {min_distance}m to {max_distance}m")
+
         candidate_nodes = []
 
         # Prepare route nodes for proximity checking
@@ -268,13 +275,20 @@ class CleanCandidateGenerator:
         else:
             min_route_distance = 300.0  # Standard distance for larger search areas
 
-        logger.debug(f"Using min_route_distance: {min_route_distance:.0f}m for search area: {max_distance:.0f}m")
+        logger.info(f"Using min_route_distance: {min_route_distance:.0f}m for search area: {max_distance:.0f}m")
+
+        excluded_count = 0
+        missing_count = 0
+        distance_filtered = 0
+        route_proximity_filtered = 0
 
         for node_id in nearby_nodes:
             if node_id in exclude_nodes:
+                excluded_count += 1
                 continue
 
             if node_id not in self.graph.nodes:
+                missing_count += 1
                 continue
 
             # Get node coordinates
@@ -285,6 +299,7 @@ class CleanCandidateGenerator:
             distance = self._haversine_distance(from_lat, from_lon, node_lat, node_lon)
 
             if not (min_distance <= distance <= max_distance):
+                distance_filtered += 1
                 continue
 
             # Check proximity to existing route nodes
@@ -295,8 +310,52 @@ class CleanCandidateGenerator:
                     too_close_to_route = True
                     break
 
-            if not too_close_to_route:
+            if too_close_to_route:
+                route_proximity_filtered += 1
+            else:
                 candidate_nodes.append((node_id, node_lat, node_lon))
+
+        # Log filtering summary
+        logger.info(f"Candidate filtering summary:")
+        logger.info(f"  Total nearby nodes: {len(nearby_nodes)}")
+        logger.info(f"  Excluded nodes: {excluded_count}")
+        logger.info(f"  Missing from graph: {missing_count}")
+        logger.info(f"  Distance filtered: {distance_filtered}")
+        logger.info(f"  Route proximity filtered: {route_proximity_filtered}")
+        logger.info(f"  Final candidates: {len(candidate_nodes)}")
+
+        # If no candidates found due to distance filtering, try without distance filter
+        if len(candidate_nodes) == 0 and distance_filtered > 0:
+            logger.warning(f"No candidates with distance filter ({min_distance:.0f}m-{max_distance:.0f}m), retrying without distance filter")
+            
+            candidate_nodes = []
+            distance_filtered = 0
+            
+            for node_id in nearby_nodes:
+                if node_id in exclude_nodes:
+                    continue
+
+                if node_id not in self.graph.nodes:
+                    continue
+
+                # Get node coordinates
+                node_data = self.graph.nodes[node_id]
+                node_lat, node_lon = node_data['y'], node_data['x']
+
+                # Skip distance check - accept any node in search radius
+
+                # Check proximity to existing route nodes
+                too_close_to_route = False
+                for route_lat, route_lon in route_node_coords:
+                    route_distance = self._haversine_distance(node_lat, node_lon, route_lat, route_lon)
+                    if route_distance < min_route_distance:
+                        too_close_to_route = True
+                        break
+
+                if not too_close_to_route:
+                    candidate_nodes.append((node_id, node_lat, node_lon))
+            
+            logger.info(f"Without distance filter: found {len(candidate_nodes)} candidates")
 
         # If we filtered out too many candidates, relax the route proximity constraint
         if len(candidate_nodes) < 5 and existing_route_nodes and len(route_node_coords) > 0:
