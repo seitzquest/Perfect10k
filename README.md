@@ -1,47 +1,78 @@
-# Perfect10k - Interactive Route Planner
+# Perfect10k
 
-AI-powered route builder for 10k daily walks with step-by-step interactive planning.
+Interactive route planner with semantic preferences for daily walks.
 
-## Quick Setup
+## Setup
+
+### Local
 
 ```bash
-# Install dependencies
 uv sync
-
-# Create SSL certificates (for mobile geolocation)
-./create_ssl_certs.sh
-
-# Start server
 python run.py
 ```
 
-Access at **http://localhost:8000**
+### Docker
 
-## How It Works
+```bash
+docker build -t perfect10k .
+docker run -p 8000:8000 -v $(pwd)/backend/cache:/app/cache perfect10k
+```
 
-1. **Set Location** - Click map or use current location
-2. **Start Route** - Get 3 smart waypoint candidates ~1km away  
-3. **Build Interactively** - Tap candidates to add waypoints
-4. **Complete Loop** - Finalize circular route back to start
-5. **Export** - Download GPX file
+Access at <http://localhost:8000>
 
-## Features
+## Usage
 
-- 🤖 **AI Preferences** - Describe your ideal route ("scenic parks", "quiet streets")
-- 📱 **Mobile-First** - Touch-optimized interface
-- 🗺️ **Global Coverage** - Works worldwide via OpenStreetMap
-- ⚡ **Real-time** - Interactive route building with instant feedback
-- 📍 **Smart Planning** - Conflict avoidance and distance optimization
-
-## API Endpoints
-
-- `POST /api/start-session` - Initialize route with location & preferences
-- `POST /api/add-waypoint` - Add waypoint, get new candidates
-- `POST /api/finalize-route` - Complete circular route
-- `GET /api/route-status/{session_id}` - Get current route stats
+1. Set starting point on map
+2. Add preferences (e.g., "scenic parks", "quiet streets")
+3. Build route by selecting from waypoint suggestions
+4. Complete loop and export GPX
 
 ## Tech Stack
 
-- **Backend**: Python FastAPI + OSMNx + NetworkX
-- **Frontend**: Vanilla JS + Leaflet maps
-- **AI**: Semantic preference matching with embeddings
+- **Backend**: Python 3.10+ with FastAPI
+- **Frontend**: JavaScript with Leaflet maps
+- **Geospatial**: OSMNx + NetworkX
+- **Semantic**: Scikit-learn
+
+## Requirements
+
+- Python 3.10+
+- ~2GB RAM
+- Internet connection
+
+## Core API
+
+- `POST /api/start-session` - Initialize route planning
+- `POST /api/add-waypoint` - Add waypoint to route
+- `POST /api/finalize-route` - Complete circular route
+- `GET /health` - Health check
+- `GET /docs` - API documentation
+
+## Development
+
+```bash
+# Linting
+ruff check
+
+# Formatting
+black .
+```
+
+Dependencies managed via `uv` in `pyproject.toml`.
+
+## Architecture
+
+```text
+backend/
+├── main.py                 # FastAPI app
+├── clean_router.py         # Routing logic
+├── semantic_overlays.py    # Feature management
+└── core/                   # Utilities
+
+frontend/
+├── index.html
+├── js/
+└── css/
+```
+
+Features semantic preference matching, multi-layer caching, and real-time route construction.
