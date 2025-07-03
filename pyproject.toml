@@ -1,0 +1,64 @@
+[project]
+name = "perfect10k"
+version = "2.0.0"
+description = "Simplified intelligent route planner for 10k daily steps"
+authors = [
+    {name = "Perfect10k Team", email = "team@perfect10k.com"}
+]
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["route-planning", "walking", "optimization", "fastapi"]
+
+dependencies = [
+    # Core Web Framework
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    # Geospatial & Route Planning
+    "osmnx>=1.7.1",
+    "networkx>=3.2.1",
+    "shapely>=2.0.0",
+    "requests>=2.31.0",
+    # Geometry & Math
+    "numpy>=1.24.0",
+    # Spatial indexing
+    "geohash2>=1.1",
+    # Logging
+    "loguru>=0.7.2",
+    "scikit-learn>=1.7.0",
+    "rtree>=1.4.0",
+    "httpx>=0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "black>=23.11.0",
+]
+
+[tool.setuptools]
+py-modules = ["app"]
+
+# Ruff configuration for linting
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings  
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
