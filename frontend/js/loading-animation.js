@@ -518,14 +518,22 @@ class LoadingAnimationManager {
         }
 
         try {
+            // Create abort controller for timeout (30 minutes for new area loading)
+            const controller = new AbortController();
+            const timeout = options.timeout || 1800000; // 30 minutes default
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
             const response = await fetch(url, {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
                     ...options.headers
                 },
-                body: body ? JSON.stringify(body) : null
+                body: body ? JSON.stringify(body) : null,
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 let errorData = {};
@@ -564,6 +572,12 @@ class LoadingAnimationManager {
                 this.hideLoading();
                 this.removeBackgroundNotification();
             }
+            
+            // Handle timeout errors with user-friendly message
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timeout: The server is taking longer than expected to load this area. For new locations, initial loading can take several minutes. Please try again.`);
+            }
+            
             throw error;
         }
     }

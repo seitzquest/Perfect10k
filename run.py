@@ -80,10 +80,11 @@ def start_backend():
     try:
         process = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=None,  # Don't capture stdout - let it print directly
+            stderr=None,  # Don't capture stderr - let it print directly  
             universal_newlines=True,
-            bufsize=1,
+            bufsize=0,   # No buffering
+            env={**os.environ, 'PYTHONUNBUFFERED': '1'}  # Force Python unbuffered output
         )
         print_colored("✅ Backend server starting on http://localhost:8000", Colors.GREEN)
         return process
@@ -167,13 +168,7 @@ def main():
             return 1
         manager.add_process(backend_process, "Backend")
 
-        # Start monitoring thread
-        backend_thread = threading.Thread(
-            target=monitor_process, args=(backend_process, "Backend", manager)
-        )
-
-        backend_thread.daemon = True
-        backend_thread.start()
+        # No need for monitoring thread since output goes directly to console
 
         # Wait for server to be ready
         wait_for_server()

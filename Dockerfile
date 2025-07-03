@@ -7,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_CACHE_DIR=/tmp/uv-cache
 ENV UV_HTTP_TIMEOUT=1800
 ENV RASPBERRY_PI_MODE=1
+ENV PYTHONIOENCODING=utf-8
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

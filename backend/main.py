@@ -22,8 +22,16 @@ if TYPE_CHECKING:
 
 # Configure minimal logging for faster startup (file logging configured on first use)
 logger.remove()  # Remove default handler
+
+import sys
+
+def flush_print(msg):
+    """Print with immediate flush for real-time logging."""
+    print(msg, end="", flush=True)
+    sys.stdout.flush()
+
 logger.add(
-    lambda msg: print(msg, end=""),  # Console output only during startup
+    flush_print,  # Console output with immediate flush
     level="INFO",
     format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | <cyan>{function}</cyan> | {message}",
 )

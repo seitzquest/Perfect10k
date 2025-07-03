@@ -28,12 +28,69 @@ class ApiClient {
      */
     async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
         try {
-            // Use synchronous approach to avoid job manager issues
-            return this.startSessionSync(lat, lon, preference, targetDistance);
+            // For now, use sync version with proper timeouts as it's more reliable
+            // The async version can be enabled later when job manager is fully stable
+            console.log('Using sync endpoint with extended timeout for reliability');
+            return await this.startSessionSync(lat, lon, preference, targetDistance);
+            
+            // Commented out async version - can be re-enabled when job manager is stable:
+            // return await this.startSessionAsync(lat, lon, preference, targetDistance);
             
         } catch (error) {
             console.error('Session start failed:', error);
-            throw new Error(`Session start failed: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Start a new interactive routing session using async endpoint (for long-running requests)
+     */
+    async startSessionAsync(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
+        const requestData = {
+            lat: lat,
+            lon: lon,
+            preference: preference,
+            target_distance: targetDistance
+        };
+        
+        try {
+            // Use async endpoint for better timeout handling
+            const asyncResponse = await this.makeRequest('/api/start-session-async', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData),
+                timeout: 30000  // 30 second timeout for async endpoint setup
+            });
+            
+            if (asyncResponse.status === 'completed') {
+                // Immediate response from cache
+                this.currentSession = asyncResponse.session_id;
+                return asyncResponse.result;
+            } else if (asyncResponse.status === 'processing') {
+                // Background job started, poll for completion
+                if (window.loadingManager) {
+                    window.loadingManager.showAsyncJobProgress(asyncResponse.job_id, {
+                        title: "Loading Area Data",
+                        description: `Processing ${preference} routes... This may take several minutes for new areas.`,
+                        estimatedTime: asyncResponse.estimated_completion_ms || 120000
+                    });
+                }
+                
+                // Poll for completion
+                const result = await this.pollJobUntilComplete(asyncResponse.job_id);
+                if (result && result.session_id) {
+                    this.currentSession = result.session_id;
+                }
+                return result;
+            } else {
+                throw new Error(`Unexpected async response status: ${asyncResponse.status}`);
+            }
+            
+        } catch (error) {
+            console.error('Async session start failed:', error);
+            throw error;
         }
     }
     
@@ -59,7 +116,7 @@ class ApiClient {
                         minimalistic: true,
                         loadingOptions: {
                             title: "Finding Perfect Route",
-                            description: `Analyzing natural features for ${preference} routes... This may take several minutes for new areas.`
+                            description: `Analyzing natural features for ${preference} routes... This may take several minutes for new areas. The app will wait up to 30 minutes for first-time area loading.`
                         }
                     }
                 );
@@ -80,7 +137,8 @@ class ApiClient {
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(requestData)
+                    body: JSON.stringify(requestData),
+                    timeout: 1800000 // 30 minute timeout for first-time area loading
                 });
                 
                 // Store session ID
@@ -99,7 +157,7 @@ class ApiClient {
      * Poll job status until completion
      */
     async pollJobUntilComplete(jobId) {
-        const maxAttempts = 300; // 5 minutes max (300 * 1 second)
+        const maxAttempts = 900; // 15 minutes max (900 * 1 second) for OSM loading
         let attempts = 0;
         
         // Show async job progress if loading manager available
@@ -629,13 +687,20 @@ class ApiClient {
      */
     async makeRequest(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
+        const timeout = options.timeout || 1800000; // Default 30 minute timeout for new areas
         
         for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
             try {
+                // Create abort controller for timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+                
                 const response = await fetch(url, {
                     ...options,
-                    timeout: 1800000 // 30 minute timeout for new areas
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (!response.ok) {
                     let errorData = {};
@@ -658,6 +723,11 @@ class ApiClient {
                 
             } catch (error) {
                 console.warn(`Request attempt ${attempt} failed:`, error.message);
+                
+                // Handle abort/timeout errors
+                if (error.name === 'AbortError') {
+                    throw new Error(`Request timeout: The server is taking longer than expected. For new areas, this can take several minutes. Please try the location again or try a different area.`);
+                }
                 
                 if (attempt === this.retryAttempts) {
                     this.updateNetworkStatus('offline');
