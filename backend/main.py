@@ -7,6 +7,9 @@ import os
 import time
 from pathlib import Path
 
+# Lazy imports to improve startup performance
+from typing import TYPE_CHECKING
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -14,12 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel
 
-# Lazy imports to improve startup performance
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
-    from interactive_router import InteractiveRouteBuilder
-    from semantic_overlays import SemanticOverlayManager, BoundingBox
+    pass
 
 # Configure minimal logging for faster startup (file logging configured on first use)
 logger.remove()  # Remove default handler
@@ -185,7 +184,7 @@ async def start_session(request_data: StartRouteRequest, request: Request):
         if "No graph data available" in str(e):
             logger.warning(f"No graph data for location: {str(e)}")
             raise HTTPException(
-                status_code=404, 
+                status_code=404,
                 detail={
                     "error": "No graph data available for this location",
                     "message": str(e),
@@ -205,12 +204,12 @@ async def start_session(request_data: StartRouteRequest, request: Request):
 async def start_session_async(request_data: StartRouteRequest, request: Request):
     """Async session start with immediate cache response or background processing."""
     logger.info("Async endpoint called - using proper async processing")
-    
+
     try:
         route_builder = get_route_builder()
         client_ip = request.client.host if request.client else "unknown"
         client_id = f"{client_ip}_{int(time.time() * 1000) % 10000}"
-        
+
         # Use proper async method from CleanRouter
         async_result = await route_builder.start_route_async(
             client_id=client_id,
@@ -219,7 +218,7 @@ async def start_session_async(request_data: StartRouteRequest, request: Request)
             preference=request_data.preference,
             target_distance=request_data.target_distance
         )
-        
+
         # Check if this is an immediate cached response or background job
         if async_result.get('response_type') == 'cached':
             # Immediate response from cache
@@ -246,7 +245,7 @@ async def start_session_async(request_data: StartRouteRequest, request: Request)
                 "estimated_completion_ms": async_result.get("estimated_completion_ms", 30000),
                 "polling_interval_ms": async_result.get("polling_interval_ms", 1000)
             }
-        
+
     except Exception as e:
         logger.error(f"Failed to start async route: {str(e)}")
         return {
@@ -262,7 +261,7 @@ async def get_job_status(job_id: str):
     """Get status of a background job."""
     try:
         route_builder = get_route_builder()
-        
+
         # Handle special cases
         if job_id == "failed":
             return {
@@ -277,13 +276,13 @@ async def get_job_status(job_id: str):
                 "status": "completed",
                 "message": "Job completed immediately - no polling needed"
             }
-        
+
         # Check with async job manager
         job_status = await route_builder.get_job_status_async(job_id)
-        
+
         if job_status:
             return job_status
-        
+
         # Fallback: check if it's a completed session
         elif job_id in route_builder.client_sessions:
             session = route_builder.client_sessions[job_id]
@@ -297,7 +296,7 @@ async def get_job_status(job_id: str):
         else:
             # Session not found - might be old or invalid
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -365,23 +364,23 @@ async def get_route_status(client_id: str):
 async def get_scoring_overlay(session_id: str, score_type: str = "overall"):
     """
     Get scored nodes data for semantic overlay visualization.
-    
+
     Args:
         session_id: Route session ID (e.g., "127.0.0.1_6748")
         score_type: Type of score to visualize (overall, nature, water, parks, etc.)
-    
+
     Returns:
         JSON with scored nodes and their values for map visualization
     """
     try:
         route_builder = get_route_builder()
         visualization_data = route_builder.get_scoring_visualization_data(session_id, score_type)
-        
+
         if 'error' in visualization_data:
             raise HTTPException(status_code=404, detail=visualization_data['error'])
-        
+
         return visualization_data
-        
+
     except Exception as e:
         logger.error(f"Failed to get scoring overlay: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get scoring overlay: {str(e)}") from e
@@ -851,10 +850,12 @@ async def score_locations_semantically(request: SemanticScoringRequest):
 async def score_single_location(
     lat: float,
     lon: float,
-    property_names: list[str] = ["forests", "rivers", "lakes"],
+    property_names: list[str] = None,
     ensure_loaded_radius: float = 2.0,
 ):
     """Score a single location based on proximity to semantic features."""
+    if property_names is None:
+        property_names = ["forests", "rivers", "lakes"]
     try:
         # Ensure features are loaded for the area
         get_overlay_manager().ensure_features_loaded_for_area(lat, lon, ensure_loaded_radius)
@@ -921,22 +922,22 @@ async def get_spatial_grid_data(client_id: str):
     """Get spatial grid scoring data for visualization overlays."""
     try:
         route_builder = get_route_builder()
-        
+
         if client_id not in route_builder.client_sessions:
             raise HTTPException(status_code=404, detail="Client session not found")
-        
+
         session = route_builder.client_sessions[client_id]
         lat, lon = session.graph_center
         area_key = f"{lat:.3f}_{lon:.3f}"
-        
+
         if area_key not in route_builder.candidate_generators:
             raise HTTPException(status_code=404, detail="No candidate generator available for this area")
-        
+
         generator = route_builder.candidate_generators[area_key]
-        
+
         # Get grid cells and their feature scores
         grid_data = []
-        for grid_coords, cell in generator.spatial_grid.grid.items():
+        for _grid_coords, cell in generator.spatial_grid.grid.items():
             cell_features = generator.feature_database.get_cell_features(cell.center_lat, cell.center_lon)
             if cell_features:
                 grid_data.append({
@@ -954,7 +955,7 @@ async def get_spatial_grid_data(client_id: str):
                     },
                     "node_count": len(cell.nodes)
                 })
-        
+
         return {
             "success": True,
             "grid_data": grid_data,
@@ -964,12 +965,12 @@ async def get_spatial_grid_data(client_id: str):
                 "area_center": {"lat": lat, "lon": lon}
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get spatial grid data: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get spatial grid data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get spatial grid data: {str(e)}") from e
 
 
 @app.get("/api/coverage")
@@ -978,36 +979,36 @@ async def get_coverage_info():
     try:
         # Check spatial tile storage for available areas
         spatial_storage = get_route_builder().spatial_storage
-        
+
         # Query database for available tiles
         cursor = spatial_storage.conn.cursor()
         cursor.execute("""
             SELECT geohash, min_lat, min_lon, max_lat, max_lon, node_count, created_at
-            FROM tiles 
-            ORDER BY created_at DESC 
+            FROM tiles
+            ORDER BY created_at DESC
             LIMIT 20
         """)
         tiles = cursor.fetchall()
-        
+
         coverage_areas = []
         for tile in tiles:
             geohash, min_lat, min_lon, max_lat, max_lon, node_count, created_at = tile
             center_lat = (min_lat + max_lat) / 2
             center_lon = (min_lon + max_lon) / 2
-            
+
             coverage_areas.append({
                 "center": {"lat": center_lat, "lon": center_lon},
                 "bbox": {"min_lat": min_lat, "min_lon": min_lon, "max_lat": max_lat, "max_lon": max_lon},
                 "node_count": node_count,
                 "created_at": created_at
             })
-        
+
         return {
             "available_areas": coverage_areas,
             "total_areas": len(coverage_areas),
             "message": "These are the geographic areas with available routing data" if coverage_areas else "No areas with routing data available. OSM data needs to be loaded first."
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get coverage info: {e}")
         return {
@@ -1022,35 +1023,35 @@ async def get_coverage_info():
 async def warm_cache(request_data: WarmCacheRequest):
     """Warm cache for specific locations to improve performance."""
     ensure_file_logging()
-    
+
     logger.info(f"Starting cache warming for {len(request_data.locations)} location(s)")
-    
+
     # Import here to avoid startup delays
     from async_job_manager import job_manager
-    
+
     try:
         # Start job manager if not running
         await job_manager.start()
-        
+
         # Get route builder instance
         route_builder = get_route_builder()
-        
+
         results = []
         total_jobs = 0
-        
+
         for i, (lat, lon) in enumerate(request_data.locations):
-            city_name = (request_data.city_names[i] if request_data.city_names 
+            city_name = (request_data.city_names[i] if request_data.city_names
                         and i < len(request_data.city_names) else None)
             location_name = city_name or f"({lat:.4f}, {lon:.4f})"
-            
+
             logger.info(f"Starting cache warming for {location_name}")
-            
+
             try:
                 # Use the existing cache warming functionality
                 if hasattr(route_builder, '_start_background_cache_warming'):
                     warming_jobs = await route_builder._start_background_cache_warming(lat, lon)
                     job_count = len(warming_jobs) if warming_jobs else 0
-                    
+
                     results.append({
                         "location": {"lat": lat, "lon": lon},
                         "city_name": city_name,
@@ -1058,9 +1059,9 @@ async def warm_cache(request_data: WarmCacheRequest):
                         "jobs_started": job_count,
                         "message": f"Started {job_count} warming jobs" if job_count > 0 else "Already cached"
                     })
-                    
+
                     total_jobs += job_count
-                    
+
                 else:
                     # Fallback: try to load graph directly to warm cache
                     try:
@@ -1080,7 +1081,7 @@ async def warm_cache(request_data: WarmCacheRequest):
                             "jobs_started": 0,
                             "message": f"Failed to load: {str(load_error)}"
                         })
-                
+
             except Exception as location_error:
                 logger.error(f"Failed to warm cache for {location_name}: {location_error}")
                 results.append({
@@ -1090,9 +1091,9 @@ async def warm_cache(request_data: WarmCacheRequest):
                     "jobs_started": 0,
                     "message": f"Error: {str(location_error)}"
                 })
-        
+
         success_count = sum(1 for r in results if r["status"] in ["started", "already_cached", "loaded"])
-        
+
         return {
             "message": f"Cache warming initiated for {len(request_data.locations)} locations",
             "total_jobs_started": total_jobs,
@@ -1101,7 +1102,7 @@ async def warm_cache(request_data: WarmCacheRequest):
             "results": results,
             "note": "Jobs are running in background. Use job status endpoints to monitor progress." if total_jobs > 0 else None
         }
-        
+
     except Exception as e:
         logger.error(f"Cache warming failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Cache warming failed: {str(e)}") from e

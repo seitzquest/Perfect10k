@@ -13,10 +13,11 @@ Usage:
     python warm_cache_api.py --all-cities      # Warm all predefined cities
 """
 
-import requests
 import argparse
 import sys
 import time
+
+import requests
 
 # Predefined city coordinates
 CITIES = {
@@ -43,12 +44,12 @@ def call_warm_api(locations, city_names=None, base_url="http://localhost:8000"):
             },
             timeout=300  # 5 minute timeout
         )
-        
+
         if response.status_code == 200:
             return True, response.json()
         else:
             return False, f"HTTP {response.status_code}: {response.text}"
-            
+
     except requests.exceptions.Timeout:
         return False, "Request timed out after 5 minutes"
     except requests.exceptions.ConnectionError:
@@ -72,28 +73,28 @@ Examples:
 Available cities: {', '.join(CITIES.keys())}
         """
     )
-    
-    parser.add_argument('--url', default='http://localhost:8000', 
+
+    parser.add_argument('--url', default='http://localhost:8000',
                        help='Backend server URL (default: http://localhost:8000)')
     parser.add_argument('coordinates', nargs='*', help='Latitude and longitude pairs')
-    
+
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--city', nargs='+', choices=CITIES.keys(), help='City names to warm')
     group.add_argument('--all-cities', action='store_true', help='Warm all predefined cities')
     group.add_argument('--cities', action='store_true', help='List available cities')
-    
+
     args = parser.parse_args()
-    
+
     if args.cities:
         print("Available cities:")
         for city, (lat, lon) in CITIES.items():
             print(f"  {city:12} - {lat:.4f}, {lon:.4f}")
         return 0
-    
+
     # Prepare locations and city names
     locations = []
     city_names = []
-    
+
     if args.all_cities:
         for city, (lat, lon) in CITIES.items():
             locations.append([lat, lon])
@@ -107,7 +108,7 @@ Available cities: {', '.join(CITIES.keys())}
         if len(args.coordinates) % 2 != 0:
             print("❌ Error: Coordinates must be provided in lat,lon pairs")
             return 1
-        
+
         for i in range(0, len(args.coordinates), 2):
             try:
                 lat = float(args.coordinates[i])
@@ -117,31 +118,31 @@ Available cities: {', '.join(CITIES.keys())}
             except ValueError:
                 print(f"❌ Error: Invalid coordinates: {args.coordinates[i]} {args.coordinates[i + 1]}")
                 return 1
-    
+
     if not locations:
         print("❌ Error: No locations specified. Use coordinates, --city, or --all-cities")
         print("For help: python warm_cache_api.py --help")
         return 1
-    
+
     print(f"🚀 Starting cache warming for {len(locations)} location(s) via API...")
     print(f"🌐 Backend URL: {args.url}")
-    
+
     start_time = time.time()
-    
+
     # Call the API
     success, result = call_warm_api(locations, [name for name in city_names if name], args.url)
-    
+
     elapsed = time.time() - start_time
-    
+
     if success:
         print(f"✅ API call completed in {elapsed:.1f}s")
         print(f"📊 {result['message']}")
         print(f"🔄 Total jobs started: {result['total_jobs_started']}")
         print(f"📍 Successful locations: {result['successful_locations']}/{result['locations_processed']}")
-        
+
         if result.get('note'):
             print(f"ℹ️  {result['note']}")
-        
+
         # Show individual results
         print("\nDetailed Results:")
         for res in result['results']:
@@ -153,9 +154,9 @@ Available cities: {', '.join(CITIES.keys())}
                 'loaded': '✅',
                 'error': '❌'
             }.get(res['status'], '?')
-            
+
             print(f"  {status_emoji} {city_name:15} - {res['message']}")
-        
+
         if result['successful_locations'] == len(locations):
             print("\n🎉 All cache warming operations completed successfully!")
             return 0

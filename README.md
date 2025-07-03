@@ -2,13 +2,15 @@
 
 Interactive route planner with semantic preferences for daily walks.
 
+![Route Planning](./images/route_planning.png?)
+
 ## Setup
 
 ### Local
 
 ```bash
 uv sync
-python run.py
+uv run run.py
 ```
 
 ### Docker
@@ -75,4 +77,6 @@ frontend/
 └── css/
 ```
 
-Features semantic preference matching, multi-layer caching, and real-time route construction.
+Features semantic preference matching, interpretability overlays, and multi-layer cachin for real-time route construction.
+
+![Route Planning Interpretability](./images/route_planning_interpretability.png?)
