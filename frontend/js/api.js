@@ -638,7 +638,17 @@ class ApiClient {
                 });
                 
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
+                    let errorData = {};
+                    try {
+                        errorData = await response.json();
+                    } catch (parseError) {
+                        // Server returned non-JSON response (likely HTML error page)
+                        const textResponse = await response.text();
+                        if (response.status === 504) {
+                            throw new Error(`Server timeout (504): The route generation is taking longer than expected. Please try again or try a different location.`);
+                        }
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
                     throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
                 }
                 
