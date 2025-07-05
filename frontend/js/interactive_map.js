@@ -866,10 +866,12 @@ class InteractiveMapEditor {
         this.clearRouteLayers();
         this.routeBuilding = false;
         this.userSetZoom = false;
-        this.sessionId = null;
+        // Keep sessionId for scoring overlay to work after route completion
+        // this.sessionId = null;
         
-        // Disable scoring overlay button when route is cleared
-        this.disableScoringOverlay();
+        // Keep scoring overlay button enabled even when route is cleared
+        // Only disable it when explicitly starting a new session
+        // this.disableScoringOverlay();
         
         // Reset mobile UI to show location controls
         const mobileDistanceDisplay = document.getElementById('mobileDistanceDisplay');
