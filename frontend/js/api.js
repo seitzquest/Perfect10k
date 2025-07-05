@@ -24,17 +24,19 @@ class ApiClient {
     }
     
     /**
-     * Start a new interactive routing session with loading animation (async version)
+     * Start a new interactive routing session with intelligent async/sync routing
      */
     async startSession(lat, lon, preference = "scenic parks and nature", targetDistance = 8000) {
         try {
-            // For now, use sync version with proper timeouts as it's more reliable
-            // The async version can be enabled later when job manager is fully stable
-            console.log('Using sync endpoint with extended timeout for reliability');
-            return await this.startSessionSync(lat, lon, preference, targetDistance);
-            
-            // Commented out async version - can be re-enabled when job manager is stable:
-            // return await this.startSessionAsync(lat, lon, preference, targetDistance);
+            // Use hybrid async endpoint that automatically chooses sync for cache hits
+            console.log('Using hybrid async endpoint for optimal performance');
+            try {
+                return await this.startSessionAsync(lat, lon, preference, targetDistance);
+            } catch (asyncError) {
+                console.warn('Hybrid async endpoint failed, falling back to pure sync:', asyncError.message);
+                // Fallback to sync version if hybrid async fails
+                return await this.startSessionSync(lat, lon, preference, targetDistance);
+            }
             
         } catch (error) {
             console.error('Session start failed:', error);
@@ -61,12 +63,13 @@ class ApiClient {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestData),
-                timeout: 30000  // 30 second timeout for async endpoint setup
+                timeout: 120000  // 2 minute timeout for async endpoint setup on slow hardware
             });
             
             if (asyncResponse.status === 'completed') {
-                // Immediate response from cache
-                this.currentSession = asyncResponse.session_id;
+                // Immediate response (either from cache hit or sync processing)
+                this.currentSession = asyncResponse.job_id || asyncResponse.session_id;
+                console.log(`✅ Immediate response received (${asyncResponse.response_type || 'cached'})`);
                 return asyncResponse.result;
             } else if (asyncResponse.status === 'processing') {
                 // Background job started, poll for completion
@@ -154,11 +157,13 @@ class ApiClient {
     }
     
     /**
-     * Poll job status until completion
+     * Poll job status until completion with exponential backoff
      */
     async pollJobUntilComplete(jobId) {
-        const maxAttempts = 900; // 15 minutes max (900 * 1 second) for OSM loading
+        const maxAttempts = 300; // Reduced from 900 to prevent resource exhaustion
         let attempts = 0;
+        let consecutiveErrors = 0;
+        const maxConsecutiveErrors = 5;
         
         // Show async job progress if loading manager available
         if (window.loadingManager) {
@@ -168,6 +173,9 @@ class ApiClient {
         while (attempts < maxAttempts) {
             try {
                 const status = await this.getJobStatus(jobId);
+                
+                // Reset error count on success
+                consecutiveErrors = 0;
                 
                 // Update loading progress with job status
                 if (window.loadingManager) {
@@ -184,13 +192,26 @@ class ApiClient {
                     throw new Error(status.error || 'Job failed');
                 }
                 
-                // Still running, wait and poll again
-                await this.delay(1000);
+                // Adaptive polling with exponential backoff
+                const baseDelay = 1000;
+                const backoffFactor = Math.min(1.5, 1 + (attempts / 100)); // Gradual backoff
+                const pollDelay = Math.min(baseDelay * backoffFactor, 5000); // Cap at 5 seconds
+                
+                await this.delay(pollDelay);
                 attempts++;
                 
             } catch (error) {
                 console.error('Job polling error:', error);
-                // Update loading with error status but continue trying
+                consecutiveErrors++;
+                
+                // Circuit breaker: fail fast after consecutive errors
+                if (consecutiveErrors >= maxConsecutiveErrors) {
+                    window.loadingManager?.hideLoading();
+                    window.loadingManager?.removeBackgroundNotification();
+                    throw new Error(`Job polling failed after ${maxConsecutiveErrors} consecutive errors: ${error.message}`);
+                }
+                
+                // Update loading with error status
                 if (window.loadingManager) {
                     window.loadingManager.updateJobProgress({
                         status: 'running',
@@ -198,7 +219,10 @@ class ApiClient {
                         progress: Math.min(90, (attempts / maxAttempts) * 100)
                     });
                 }
-                await this.delay(2000);
+                
+                // Exponential backoff for errors
+                const errorDelay = Math.min(2000 * Math.pow(1.5, consecutiveErrors), 10000); // Cap at 10 seconds
+                await this.delay(errorDelay);
                 attempts++;
             }
         }
@@ -683,11 +707,31 @@ class ApiClient {
     }
     
     /**
-     * Core request method with retry logic and error handling
+     * Core request method with retry logic and circuit breaker
      */
     async makeRequest(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
-        const timeout = options.timeout || 1800000; // Default 30 minute timeout for new areas
+        const timeout = options.timeout || 600000; // Reduced to 10 minutes to prevent resource exhaustion
+        
+        // Initialize circuit breaker state if not exists
+        if (!this.circuitBreaker) {
+            this.circuitBreaker = {
+                failures: 0,
+                lastFailureTime: 0,
+                state: 'closed' // closed, open, half-open
+            };
+        }
+        
+        // Check circuit breaker
+        const now = Date.now();
+        if (this.circuitBreaker.state === 'open') {
+            if (now - this.circuitBreaker.lastFailureTime > 60000) { // 1 minute cooldown
+                this.circuitBreaker.state = 'half-open';
+                console.log('Circuit breaker half-open, attempting request');
+            } else {
+                throw new Error('Circuit breaker is open. Service temporarily unavailable.');
+            }
+        }
         
         for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
             try {
@@ -708,7 +752,6 @@ class ApiClient {
                         errorData = await response.json();
                     } catch (parseError) {
                         // Server returned non-JSON response (likely HTML error page)
-                        const textResponse = await response.text();
                         if (response.status === 504) {
                             throw new Error(`Server timeout (504): The route generation is taking longer than expected. Please try again or try a different location.`);
                         }
@@ -719,6 +762,11 @@ class ApiClient {
                 
                 const data = await response.json();
                 this.updateNetworkStatus('online');
+                
+                // Reset circuit breaker on success
+                this.circuitBreaker.failures = 0;
+                this.circuitBreaker.state = 'closed';
+                
                 return data;
                 
             } catch (error) {
@@ -729,13 +777,23 @@ class ApiClient {
                     throw new Error(`Request timeout: The server is taking longer than expected. For new areas, this can take several minutes. Please try the location again or try a different area.`);
                 }
                 
+                // Update circuit breaker
+                this.circuitBreaker.failures++;
+                this.circuitBreaker.lastFailureTime = now;
+                
+                if (this.circuitBreaker.failures >= 3) {
+                    this.circuitBreaker.state = 'open';
+                    console.warn('Circuit breaker opened due to repeated failures');
+                }
+                
                 if (attempt === this.retryAttempts) {
                     this.updateNetworkStatus('offline');
                     throw error;
                 }
                 
-                // Wait before retry
-                await this.delay(this.retryDelay * attempt);
+                // Exponential backoff for retries
+                const backoffDelay = Math.min(this.retryDelay * Math.pow(2, attempt - 1), 10000);
+                await this.delay(backoffDelay);
             }
         }
     }

@@ -88,6 +88,13 @@ class AsyncJobManager:
         self.persistence_dir = Path(persistence_dir)
         self.persistence_dir.mkdir(parents=True, exist_ok=True)
 
+        # Create bounded thread pool for sync operations to prevent resource exhaustion
+        import concurrent.futures
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(1, min(max_workers, 2)),  # Cap at 2 threads for Pi
+            thread_name_prefix="AsyncJobManager"
+        )
+
         # Job storage
         self.jobs: dict[str, AsyncJob] = {}
         self.results: dict[str, JobResult] = {}
@@ -170,6 +177,9 @@ class AsyncJobManager:
         # Persist pending jobs
         await self._persist_jobs()
 
+        # Clean up thread pool
+        self.thread_pool.shutdown(wait=True)
+
         self.workers.clear()
         self.background_tasks.clear()
 
@@ -239,13 +249,19 @@ class AsyncJobManager:
         return result.status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
 
     async def wait_for_job(self, job_id: str, timeout: float = 30.0) -> JobResult | None:
-        """Wait for job completion with timeout."""
+        """Wait for job completion with adaptive polling."""
         start_time = time.time()
+        poll_interval = 0.1  # Start with 100ms
+        max_poll_interval = 2.0  # Cap at 2 seconds
 
         while time.time() - start_time < timeout and self.running:
             if self.is_job_complete(job_id):
                 return self.results.get(job_id)
-            await asyncio.sleep(0.1)  # Poll every 100ms
+            
+            await asyncio.sleep(poll_interval)
+
+            # Gradually increase polling interval to reduce CPU usage
+            poll_interval = min(poll_interval * 1.2, max_poll_interval)
 
         # Timeout
         result = self.results.get(job_id)
@@ -255,9 +271,11 @@ class AsyncJobManager:
         return result
 
     async def get_job_updates(self, job_id: str):
-        """Async generator for real-time job updates."""
+        """Async generator for real-time job updates with adaptive polling."""
         last_status = None
         start_time = time.time()
+        poll_interval = 0.5  # Start with 500ms
+        max_poll_interval = 3.0  # Cap at 3 seconds
 
         while time.time() - start_time < 300 and self.running:  # 5 minute max
             result = self.results.get(job_id)
@@ -268,11 +286,15 @@ class AsyncJobManager:
             if result.status != last_status:
                 yield result
                 last_status = result.status
+                poll_interval = 0.5  # Reset to fast polling on status change
 
                 if self.is_job_complete(job_id):
                     break
 
-            await asyncio.sleep(0.5)  # Update every 500ms
+            await asyncio.sleep(poll_interval)
+
+            # Gradually increase polling interval to reduce resource usage
+            poll_interval = min(poll_interval * 1.3, max_poll_interval)
 
     async def _priority_worker(self, worker_name: str):
         """Worker that processes jobs by priority."""
@@ -325,10 +347,10 @@ class AsyncJobManager:
             if asyncio.iscoroutinefunction(job.job_function):
                 job_result = await job.job_function(*job.args, **job.kwargs)
             else:
-                # Run sync function in thread pool to avoid blocking
+                # Run sync function in bounded thread pool to avoid resource exhaustion
                 loop = asyncio.get_event_loop()
                 job_result = await loop.run_in_executor(
-                    None, lambda: job.job_function(*job.args, **job.kwargs)
+                    self.thread_pool, lambda: job.job_function(*job.args, **job.kwargs)
                 )
 
             # Success

@@ -210,15 +210,54 @@ async def start_session(request_data: StartRouteRequest, request: Request):
 
 @app.post("/api/start-session-async")
 async def start_session_async(request_data: StartRouteRequest, request: Request):
-    """Async session start with immediate cache response or background processing."""
-    logger.info("Async endpoint called - using proper async processing")
+    """Hybrid async session start - sync for cache hits, async for cache misses."""
+    ensure_file_logging()
+    client_id = get_client_id(request, request_data.client_id)
+    
+    logger.info(f"Hybrid async endpoint for client {client_id} at ({request_data.lat:.6f}, {request_data.lon:.6f})")
 
     try:
         route_builder = get_route_builder()
-        client_ip = request.client.host if request.client else "unknown"
-        client_id = f"{client_ip}_{int(time.time() * 1000) % 10000}"
-
-        # Use proper async method from CleanRouter
+        
+        # Step 1: Fast cache check - avoid expensive operations
+        if hasattr(route_builder, '_has_immediate_cache'):
+            cache_available = route_builder._has_immediate_cache(
+                request_data.lat, request_data.lon, request_data.preference
+            )
+        else:
+            # Fallback: use smart cache manager for fast check
+            from smart_cache_manager import cache_manager
+            cache_available = cache_manager.has_cached_graph(request_data.lat, request_data.lon)
+        
+        if cache_available:
+            # Cache hit: use sync path for immediate response
+            logger.info(f"✅ Cache hit - using sync path for {client_id}")
+            
+            try:
+                sync_result = route_builder.start_route(
+                    client_id=client_id,
+                    lat=request_data.lat,
+                    lon=request_data.lon,
+                    preference=request_data.preference,
+                    target_distance=request_data.target_distance,
+                )
+                
+                # Return immediate completion for cached results
+                return {
+                    "job_id": sync_result.get("session_id", client_id),
+                    "status": "completed",
+                    "result": sync_result,
+                    "message": "Route generation completed from cache",
+                    "completed_at": time.time(),
+                    "response_type": "immediate_cache"
+                }
+            except Exception as sync_error:
+                logger.warning(f"Sync fallback failed: {sync_error}, using async path")
+                # If sync fails, fall through to async path
+        
+        # Step 2: Cache miss or sync failure - use async path
+        logger.info(f"🔄 Cache miss - using async path for {client_id}")
+        
         async_result = await route_builder.start_route_async(
             client_id=client_id,
             lat=request_data.lat,

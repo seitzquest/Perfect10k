@@ -831,6 +831,25 @@ class CleanRouter:
 
         return visualization_data
 
+    def _has_immediate_cache(self, lat: float, lon: float, preference: str) -> bool:
+        """Fast check if we have immediate cache data for a location without expensive loading."""
+        try:
+            # Check if graph is in memory cache
+            if cache_manager.has_cached_graph(lat, lon):
+                # Check if candidate generator is already initialized
+                area_key = f"{lat:.3f}_{lon:.3f}"
+                if area_key in self.candidate_generators:
+                    return True
+                
+                # Check if we have cached candidate data
+                generator_cache_key = f"candidates_{area_key}_{preference}"
+                if hasattr(cache_manager, 'has_cached_data') and cache_manager.has_cached_data(generator_cache_key):
+                    return True
+            
+            return False
+        except Exception:
+            return False
+
     @profile_function("get_graph_for_location")
     def _get_graph_for_location(self, lat: float, lon: float) -> nx.MultiGraph:
         """Get graph data for a location using smart caching with fallback to spatial tile storage."""
