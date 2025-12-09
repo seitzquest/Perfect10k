@@ -30,10 +30,10 @@ class DockerCacheConfig:
         """
         self.base_cache_dir = Path(base_cache_dir)
         self.cache_dirs = {
-            'graphs': self.base_cache_dir / 'graphs',
-            'smart_cache': self.base_cache_dir / 'smart_cache',
-            'jobs': self.base_cache_dir / 'jobs',
-            'exports': self.base_cache_dir / 'exports'
+            "graphs": self.base_cache_dir / "graphs",
+            "smart_cache": self.base_cache_dir / "smart_cache",
+            "jobs": self.base_cache_dir / "jobs",
+            "exports": self.base_cache_dir / "exports",
         }
 
         # Ensure all cache directories exist
@@ -45,30 +45,30 @@ class DockerCacheConfig:
     def get_cache_info(self) -> dict[str, Any]:
         """Get comprehensive cache information."""
         info = {
-            'base_directory': str(self.base_cache_dir),
-            'directories': {},
-            'total_size_mb': 0,
-            'total_files': 0,
-            'is_docker_volume': self._is_docker_volume()
+            "base_directory": str(self.base_cache_dir),
+            "directories": {},
+            "total_size_mb": 0,
+            "total_files": 0,
+            "is_docker_volume": self._is_docker_volume(),
         }
 
         for name, path in self.cache_dirs.items():
             if path.exists():
                 size_mb, file_count = self._get_directory_stats(path)
-                info['directories'][name] = {
-                    'path': str(path),
-                    'size_mb': size_mb,
-                    'file_count': file_count,
-                    'last_modified': path.stat().st_mtime if path.exists() else None
+                info["directories"][name] = {
+                    "path": str(path),
+                    "size_mb": size_mb,
+                    "file_count": file_count,
+                    "last_modified": path.stat().st_mtime if path.exists() else None,
                 }
-                info['total_size_mb'] += size_mb
-                info['total_files'] += file_count
+                info["total_size_mb"] += size_mb
+                info["total_files"] += file_count
             else:
-                info['directories'][name] = {
-                    'path': str(path),
-                    'size_mb': 0,
-                    'file_count': 0,
-                    'last_modified': None
+                info["directories"][name] = {
+                    "path": str(path),
+                    "size_mb": 0,
+                    "file_count": 0,
+                    "last_modified": None,
                 }
 
         return info
@@ -86,14 +86,14 @@ class DockerCacheConfig:
         if export_name is None:
             export_name = f"perfect10k_cache_{int(time.time())}"
 
-        export_path = self.cache_dirs['exports'] / f"{export_name}.tar.gz"
+        export_path = self.cache_dirs["exports"] / f"{export_name}.tar.gz"
 
         logger.info(f"📦 Exporting cache to {export_path}")
 
-        with tarfile.open(export_path, 'w:gz') as tar:
+        with tarfile.open(export_path, "w:gz") as tar:
             # Export each cache directory
             for name, path in self.cache_dirs.items():
-                if name == 'exports':  # Don't export the exports directory
+                if name == "exports":  # Don't export the exports directory
                     continue
 
                 if path.exists():
@@ -102,15 +102,15 @@ class DockerCacheConfig:
 
             # Add metadata
             metadata = {
-                'export_name': export_name,
-                'export_time': time.time(),
-                'export_time_iso': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()),
-                'cache_info': self.get_cache_info(),
-                'version': '1.0'
+                "export_name": export_name,
+                "export_time": time.time(),
+                "export_time_iso": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                "cache_info": self.get_cache_info(),
+                "version": "1.0",
             }
 
             metadata_json = json.dumps(metadata, indent=2)
-            info = tarfile.TarInfo('metadata.json')
+            info = tarfile.TarInfo("metadata.json")
             info.size = len(metadata_json.encode())
             tar.addfile(info, fileobj=BytesIO(metadata_json.encode()))
 
@@ -130,18 +130,18 @@ class DockerCacheConfig:
         Returns:
             True if import successful
         """
-        import_path = Path(import_path)
-        if not import_path.exists():
-            logger.error(f"Import file not found: {import_path}")
+        import_path_obj = Path(import_path)
+        if not import_path_obj.exists():
+            logger.error(f"Import file not found: {import_path_obj}")
             return False
 
-        logger.info(f"📥 Importing cache from {import_path}")
+        logger.info(f"📥 Importing cache from {import_path_obj}")
 
         try:
-            with tarfile.open(import_path, 'r:gz') as tar:
+            with tarfile.open(str(import_path_obj), "r:gz") as tar:
                 # Extract metadata first
                 try:
-                    metadata_file = tar.extractfile('metadata.json')
+                    metadata_file = tar.extractfile("metadata.json")
                     if metadata_file:
                         metadata = json.load(metadata_file)
                         logger.info(f"Importing cache: {metadata.get('export_name', 'unknown')}")
@@ -150,17 +150,18 @@ class DockerCacheConfig:
                     logger.warning("No metadata found in import, proceeding anyway")
 
                 # Extract cache directories
-                for name in self.cache_dirs.keys():
-                    if name == 'exports':  # Don't import exports
+                for name in self.cache_dirs:
+                    if name == "exports":  # Don't import exports
                         continue
 
                     target_dir = self.cache_dirs[name]
 
                     # Check if directory exists and handle overwrite
-                    if target_dir.exists() and not overwrite:
-                        if any(target_dir.iterdir()):  # Directory not empty
-                            logger.warning(f"Cache directory {name} exists and not empty, skipping (use overwrite=True to replace)")
-                            continue
+                    if target_dir.exists() and not overwrite and any(target_dir.iterdir()):
+                        logger.warning(
+                            f"Cache directory {name} exists and not empty, skipping (use overwrite=True to replace)"
+                        )
+                        continue
 
                     # Extract directory
                     try:
@@ -202,7 +203,7 @@ class DockerCacheConfig:
         else:
             # Clear all cache (except exports)
             for name, cache_dir in self.cache_dirs.items():
-                if name == 'exports':
+                if name == "exports":
                     continue
                 if cache_dir.exists():
                     shutil.rmtree(cache_dir)
@@ -217,16 +218,14 @@ class DockerCacheConfig:
         Returns:
             Dictionary of volume mappings
         """
-        return {
-            'cache_volume': f"{self.base_cache_dir}:/app/cache"
-        }
+        return {"cache_volume": f"{self.base_cache_dir}:/app/cache"}
 
     def _is_docker_volume(self) -> bool:
         """Check if cache directory is mounted as Docker volume."""
         try:
             # Check if mounted (simple heuristic)
             stat = self.base_cache_dir.stat()
-            return stat.st_dev != Path('/').stat().st_dev
+            return stat.st_dev != Path("/").stat().st_dev
         except Exception:
             return False
 
@@ -235,7 +234,7 @@ class DockerCacheConfig:
         total_size = 0
         file_count = 0
 
-        for file_path in directory.rglob('*'):
+        for file_path in directory.rglob("*"):
             if file_path.is_file():
                 total_size += file_path.stat().st_size
                 file_count += 1

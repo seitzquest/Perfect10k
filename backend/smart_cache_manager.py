@@ -31,6 +31,7 @@ from performance_profiler import profile_function
 @dataclass
 class CachedNodeFeatures:
     """Cached features for a graph node."""
+
     node_id: int
     lat: float
     lon: float
@@ -56,6 +57,7 @@ class CachedNodeFeatures:
 @dataclass
 class CachedScoringWeights:
     """Cached scoring weights for different preferences."""
+
     preference_type: str
     weights: dict[str, float]
     bias_factors: dict[str, float]
@@ -66,6 +68,7 @@ class CachedScoringWeights:
 @dataclass
 class CandidatePool:
     """Precomputed candidate pools for fast probabilistic selection."""
+
     area_key: str
     high_forest_nodes: list[int]
     high_water_nodes: list[int]
@@ -112,7 +115,7 @@ class SmartCacheManager:
         area_key = self.get_area_key(lat, lon)
 
         if area_key in self.graph_cache:
-            self.cache_hits['graph'] += 1
+            self.cache_hits["graph"] += 1
             logger.debug(f"📥 Graph cache HIT for {area_key}")
             return self.graph_cache[area_key]
 
@@ -120,10 +123,10 @@ class SmartCacheManager:
         graph_file = self.cache_dir / f"graph_{area_key}.pkl"
         if graph_file.exists():
             try:
-                with open(graph_file, 'rb') as f:
+                with open(graph_file, "rb") as f:
                     graph = pickle.load(f)
                 self.graph_cache[area_key] = graph
-                self.cache_hits['graph'] += 1
+                self.cache_hits["graph"] += 1
                 logger.info(f"📥 Graph loaded from disk cache for {area_key}")
                 return graph
             except Exception as e:
@@ -135,7 +138,7 @@ class SmartCacheManager:
                 except Exception as cleanup_error:
                     logger.error(f"Failed to clean up corrupted cache file: {cleanup_error}")
 
-        self.cache_misses['graph'] += 1
+        self.cache_misses["graph"] += 1
         logger.debug(f"📤 Graph cache MISS for {area_key}")
         return None
 
@@ -159,7 +162,7 @@ class SmartCacheManager:
                 graph_copy = graph.copy()
 
                 # Write to temporary file first to avoid corruption
-                with open(temp_file, 'wb') as f:
+                with open(temp_file, "wb") as f:
                     pickle.dump(graph_copy, f)
 
                 # Atomic rename to final location
@@ -175,7 +178,9 @@ class SmartCacheManager:
         threading.Thread(target=save_to_disk, daemon=True).start()
 
     @profile_function("cache_get_node_features")
-    def get_node_features(self, area_key: str, node_ids: list[int]) -> dict[int, CachedNodeFeatures]:
+    def get_node_features(
+        self, area_key: str, node_ids: list[int]
+    ) -> dict[int, CachedNodeFeatures]:
         """Get cached node features for specific nodes."""
         if area_key not in self.node_features_cache:
             self._load_node_features_from_disk(area_key)
@@ -186,9 +191,9 @@ class SmartCacheManager:
         for node_id in node_ids:
             if node_id in area_features:
                 result[node_id] = area_features[node_id]
-                self.cache_hits['node_features'] += 1
+                self.cache_hits["node_features"] += 1
             else:
-                self.cache_misses['node_features'] += 1
+                self.cache_misses["node_features"] += 1
 
         logger.debug(f"📥 Node features: {len(result)}/{len(node_ids)} cached for {area_key}")
         return result
@@ -200,11 +205,13 @@ class SmartCacheManager:
 
         area_features = self.node_features_cache.get(area_key, {})
         if area_features:
-            self.cache_hits['node_features'] += 1
-            logger.debug(f"✓ All node features cache hit for {area_key} ({len(area_features)} features)")
+            self.cache_hits["node_features"] += 1
+            logger.debug(
+                f"✓ All node features cache hit for {area_key} ({len(area_features)} features)"
+            )
             return area_features
         else:
-            self.cache_misses['node_features'] += 1
+            self.cache_misses["node_features"] += 1
             logger.debug(f"✗ All node features cache miss for {area_key}")
             return None
 
@@ -226,7 +233,7 @@ class SmartCacheManager:
     def get_scoring_weights(self, preference: str) -> CachedScoringWeights | None:
         """Get cached scoring weights for a preference."""
         if preference in self.scoring_weights_cache:
-            self.cache_hits['scoring_weights'] += 1
+            self.cache_hits["scoring_weights"] += 1
             return self.scoring_weights_cache[preference]
 
         # Try loading from disk
@@ -237,12 +244,12 @@ class SmartCacheManager:
                     data = json.load(f)
                 weights = CachedScoringWeights(**data)
                 self.scoring_weights_cache[preference] = weights
-                self.cache_hits['scoring_weights'] += 1
+                self.cache_hits["scoring_weights"] += 1
                 return weights
             except Exception as e:
                 logger.warning(f"Failed to load cached weights: {e}")
 
-        self.cache_misses['scoring_weights'] += 1
+        self.cache_misses["scoring_weights"] += 1
         return None
 
     def store_scoring_weights(self, preference: str, weights: CachedScoringWeights):
@@ -252,14 +259,18 @@ class SmartCacheManager:
         # Save to disk
         weights_file = self.cache_dir / f"weights_{preference}.json"
         try:
-            with open(weights_file, 'w') as f:
-                json.dump({
-                    'preference_type': weights.preference_type,
-                    'weights': weights.weights,
-                    'bias_factors': weights.bias_factors,
-                    'normalization_params': weights.normalization_params,
-                    'last_updated': weights.last_updated
-                }, f, indent=2)
+            with open(weights_file, "w") as f:
+                json.dump(
+                    {
+                        "preference_type": weights.preference_type,
+                        "weights": weights.weights,
+                        "bias_factors": weights.bias_factors,
+                        "normalization_params": weights.normalization_params,
+                        "last_updated": weights.last_updated,
+                    },
+                    f,
+                    indent=2,
+                )
             logger.info(f"💾 Stored scoring weights for {preference}")
         except Exception as e:
             logger.error(f"Failed to save scoring weights: {e}")
@@ -271,7 +282,7 @@ class SmartCacheManager:
 
             # Check if pool is still fresh (24 hours)
             if time.time() - pool.last_updated < 86400:
-                self.cache_hits['candidate_pool'] += 1
+                self.cache_hits["candidate_pool"] += 1
                 return pool
 
         # Try loading from disk
@@ -285,12 +296,12 @@ class SmartCacheManager:
                 # Check freshness
                 if time.time() - pool.last_updated < 86400:
                     self.candidate_pools_cache[area_key] = pool
-                    self.cache_hits['candidate_pool'] += 1
+                    self.cache_hits["candidate_pool"] += 1
                     return pool
             except Exception as e:
                 logger.warning(f"Failed to load candidate pool: {e}")
 
-        self.cache_misses['candidate_pool'] += 1
+        self.cache_misses["candidate_pool"] += 1
         return None
 
     def store_candidate_pool(self, area_key: str, pool: CandidatePool):
@@ -300,24 +311,33 @@ class SmartCacheManager:
         # Save to disk
         pool_file = self.cache_dir / f"pool_{area_key}.json"
         try:
-            with open(pool_file, 'w') as f:
-                json.dump({
-                    'area_key': pool.area_key,
-                    'high_forest_nodes': pool.high_forest_nodes,
-                    'high_water_nodes': pool.high_water_nodes,
-                    'high_urban_nodes': pool.high_urban_nodes,
-                    'high_connectivity_nodes': pool.high_connectivity_nodes,
-                    'balanced_nodes': pool.balanced_nodes,
-                    'last_updated': pool.last_updated
-                }, f, indent=2)
+            with open(pool_file, "w") as f:
+                json.dump(
+                    {
+                        "area_key": pool.area_key,
+                        "high_forest_nodes": pool.high_forest_nodes,
+                        "high_water_nodes": pool.high_water_nodes,
+                        "high_urban_nodes": pool.high_urban_nodes,
+                        "high_connectivity_nodes": pool.high_connectivity_nodes,
+                        "balanced_nodes": pool.balanced_nodes,
+                        "last_updated": pool.last_updated,
+                    },
+                    f,
+                    indent=2,
+                )
             logger.info(f"💾 Stored candidate pool for {area_key}")
         except Exception as e:
             logger.error(f"Failed to save candidate pool: {e}")
 
-    def probabilistic_candidate_selection(self, area_key: str, preference: str,
-                                        center_lat: float, center_lon: float,
-                                        max_candidates: int = 20,
-                                        variety_factor: float = 0.3) -> list[int]:
+    def probabilistic_candidate_selection(
+        self,
+        area_key: str,
+        preference: str,
+        center_lat: float,
+        center_lon: float,
+        max_candidates: int = 20,
+        variety_factor: float = 0.3,
+    ) -> list[int]:
         """
         Probabilistic candidate selection that preserves variety.
 
@@ -337,33 +357,41 @@ class SmartCacheManager:
         candidate_sources = []
 
         if "forest" in preference.lower() or "nature" in preference.lower():
-            candidate_sources.extend([
-                (pool.high_forest_nodes, 0.4),
-                (pool.balanced_nodes, 0.3),
-                (pool.high_water_nodes, 0.2),
-                (pool.high_connectivity_nodes, 0.1)
-            ])
+            candidate_sources.extend(
+                [
+                    (pool.high_forest_nodes, 0.4),
+                    (pool.balanced_nodes, 0.3),
+                    (pool.high_water_nodes, 0.2),
+                    (pool.high_connectivity_nodes, 0.1),
+                ]
+            )
         elif "urban" in preference.lower() or "city" in preference.lower():
-            candidate_sources.extend([
-                (pool.high_urban_nodes, 0.4),
-                (pool.high_connectivity_nodes, 0.3),
-                (pool.balanced_nodes, 0.2),
-                (pool.high_forest_nodes, 0.1)
-            ])
+            candidate_sources.extend(
+                [
+                    (pool.high_urban_nodes, 0.4),
+                    (pool.high_connectivity_nodes, 0.3),
+                    (pool.balanced_nodes, 0.2),
+                    (pool.high_forest_nodes, 0.1),
+                ]
+            )
         elif "water" in preference.lower():
-            candidate_sources.extend([
-                (pool.high_water_nodes, 0.5),
-                (pool.high_forest_nodes, 0.3),
-                (pool.balanced_nodes, 0.2)
-            ])
+            candidate_sources.extend(
+                [
+                    (pool.high_water_nodes, 0.5),
+                    (pool.high_forest_nodes, 0.3),
+                    (pool.balanced_nodes, 0.2),
+                ]
+            )
         else:
             # Balanced selection for unknown preferences
-            candidate_sources.extend([
-                (pool.balanced_nodes, 0.4),
-                (pool.high_forest_nodes, 0.2),
-                (pool.high_urban_nodes, 0.2),
-                (pool.high_connectivity_nodes, 0.2)
-            ])
+            candidate_sources.extend(
+                [
+                    (pool.balanced_nodes, 0.4),
+                    (pool.high_forest_nodes, 0.2),
+                    (pool.high_urban_nodes, 0.2),
+                    (pool.high_connectivity_nodes, 0.2),
+                ]
+            )
 
         # Weighted probabilistic sampling
         selected_candidates = []
@@ -374,7 +402,9 @@ class SmartCacheManager:
 
             # Calculate how many to select from this pool
             pool_size = int(max_candidates * weight * (1 + np.random.normal(0, variety_factor)))
-            pool_size = max(1, min(pool_size, len(candidates), max_candidates - len(selected_candidates)))
+            pool_size = max(
+                1, min(pool_size, len(candidates), max_candidates - len(selected_candidates))
+            )
 
             # Random sampling with variety
             if variety_factor > 0:
@@ -387,7 +417,7 @@ class SmartCacheManager:
                     len(candidates),
                     size=min(pool_size, len(candidates)),
                     replace=False,
-                    p=selection_probs
+                    p=selection_probs,
                 )
                 pool_candidates = [candidates[i] for i in selected_indices]
             else:
@@ -416,16 +446,16 @@ class SmartCacheManager:
         hit_rate = total_hits / total_requests if total_requests > 0 else 0
 
         return {
-            'overall_hit_rate': hit_rate,
-            'total_requests': total_requests,
-            'cache_hits': dict(self.cache_hits),
-            'cache_misses': dict(self.cache_misses),
-            'cache_sizes': {
-                'graphs': len(self.graph_cache),
-                'node_features': sum(len(area) for area in self.node_features_cache.values()),
-                'scoring_weights': len(self.scoring_weights_cache),
-                'candidate_pools': len(self.candidate_pools_cache)
-            }
+            "overall_hit_rate": hit_rate,
+            "total_requests": total_requests,
+            "cache_hits": dict(self.cache_hits),
+            "cache_misses": dict(self.cache_misses),
+            "cache_sizes": {
+                "graphs": len(self.graph_cache),
+                "node_features": sum(len(area) for area in self.node_features_cache.values()),
+                "scoring_weights": len(self.scoring_weights_cache),
+                "candidate_pools": len(self.candidate_pools_cache),
+            },
         }
 
     def _load_node_features_from_disk(self, area_key: str):
@@ -433,7 +463,7 @@ class SmartCacheManager:
         features_file = self.cache_dir / f"features_{area_key}.pkl"
         if features_file.exists():
             try:
-                with open(features_file, 'rb') as f:
+                with open(features_file, "rb") as f:
                     features = pickle.load(f)
                 self.node_features_cache[area_key] = features
                 logger.info(f"📥 Loaded {len(features)} node features from disk for {area_key}")
@@ -447,7 +477,7 @@ class SmartCacheManager:
 
         features_file = self.cache_dir / f"features_{area_key}.pkl"
         try:
-            with open(features_file, 'wb') as f:
+            with open(features_file, "wb") as f:
                 pickle.dump(self.node_features_cache[area_key], f)
             logger.debug(f"💾 Saved node features to disk for {area_key}")
         except Exception as e:
@@ -457,7 +487,7 @@ class SmartCacheManager:
         """Get cached spatial grid for an area."""
         # Check memory cache first
         if area_key in self.spatial_grid_cache:
-            self.cache_hits['spatial_grid'] += 1
+            self.cache_hits["spatial_grid"] += 1
             logger.debug(f"✓ Spatial grid cache hit for {area_key}")
             return self.spatial_grid_cache[area_key]
 
@@ -465,10 +495,10 @@ class SmartCacheManager:
         grid_file = self.cache_dir / f"grid_{area_key}.pkl"
         if grid_file.exists():
             try:
-                with open(grid_file, 'rb') as f:
+                with open(grid_file, "rb") as f:
                     spatial_grid = pickle.load(f)
                 self.spatial_grid_cache[area_key] = spatial_grid
-                self.cache_hits['spatial_grid'] += 1
+                self.cache_hits["spatial_grid"] += 1
                 logger.debug(f"✓ Spatial grid loaded from disk for {area_key}")
                 return spatial_grid
             except Exception as e:
@@ -478,9 +508,11 @@ class SmartCacheManager:
                     grid_file.unlink()
                     logger.info(f"🧹 Removed corrupted spatial grid cache: {grid_file.name}")
                 except Exception as cleanup_error:
-                    logger.error(f"Failed to clean up corrupted spatial grid cache: {cleanup_error}")
+                    logger.error(
+                        f"Failed to clean up corrupted spatial grid cache: {cleanup_error}"
+                    )
 
-        self.cache_misses['spatial_grid'] += 1
+        self.cache_misses["spatial_grid"] += 1
         logger.debug(f"✗ Spatial grid cache miss for {area_key}")
         return None
 
@@ -497,7 +529,7 @@ class SmartCacheManager:
             temp_file = self.cache_dir / f"grid_{area_key}.pkl.tmp"
             try:
                 # Write to temporary file first to avoid corruption
-                with open(temp_file, 'wb') as f:
+                with open(temp_file, "wb") as f:
                     pickle.dump(spatial_grid, f)
 
                 # Atomic rename to final location
@@ -517,7 +549,7 @@ class SmartCacheManager:
         # Check memory cache first
         cell_cache_key = f"cells_{area_key}"
         if cell_cache_key in self.spatial_grid_cache:
-            self.cache_hits['cell_features'] += 1
+            self.cache_hits["cell_features"] += 1
             logger.debug(f"✓ Cell features cache hit for {area_key}")
             return self.spatial_grid_cache[cell_cache_key]
 
@@ -525,10 +557,10 @@ class SmartCacheManager:
         cells_file = self.cache_dir / f"cells_{area_key}.pkl"
         if cells_file.exists():
             try:
-                with open(cells_file, 'rb') as f:
+                with open(cells_file, "rb") as f:
                     cell_features = pickle.load(f)
                 self.spatial_grid_cache[cell_cache_key] = cell_features
-                self.cache_hits['cell_features'] += 1
+                self.cache_hits["cell_features"] += 1
                 logger.debug(f"✓ Cell features loaded from disk for {area_key}")
                 return cell_features
             except Exception as e:
@@ -538,9 +570,11 @@ class SmartCacheManager:
                     cells_file.unlink()
                     logger.info(f"🧹 Removed corrupted cell features cache: {cells_file.name}")
                 except Exception as cleanup_error:
-                    logger.error(f"Failed to clean up corrupted cell features cache: {cleanup_error}")
+                    logger.error(
+                        f"Failed to clean up corrupted cell features cache: {cleanup_error}"
+                    )
 
-        self.cache_misses['cell_features'] += 1
+        self.cache_misses["cell_features"] += 1
         logger.debug(f"✗ Cell features cache miss for {area_key}")
         return None
 
@@ -558,7 +592,7 @@ class SmartCacheManager:
             temp_file = self.cache_dir / f"cells_{area_key}.pkl.tmp"
             try:
                 # Write to temporary file first to avoid corruption
-                with open(temp_file, 'wb') as f:
+                with open(temp_file, "wb") as f:
                     pickle.dump(cell_features, f)
 
                 # Atomic rename to final location

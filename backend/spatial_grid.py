@@ -13,6 +13,7 @@ from loguru import logger
 @dataclass
 class GridCell:
     """A single cell in the spatial grid."""
+
     grid_x: int
     grid_y: int
     center_lat: float
@@ -27,6 +28,7 @@ class GridCell:
 @dataclass
 class SpatialBounds:
     """Spatial bounds for a geographic area."""
+
     min_lat: float
     max_lat: float
     min_lon: float
@@ -72,12 +74,11 @@ class SpatialGrid:
             return
 
         # Calculate bounds from all nodes
-        lats = [data['y'] for _, data in graph.nodes(data=True)]
-        lons = [data['x'] for _, data in graph.nodes(data=True)]
+        lats = [data["y"] for _, data in graph.nodes(data=True)]
+        lons = [data["x"] for _, data in graph.nodes(data=True)]
 
         self.bounds = SpatialBounds(
-            min_lat=min(lats), max_lat=max(lats),
-            min_lon=min(lons), max_lon=max(lons)
+            min_lat=min(lats), max_lat=max(lats), min_lon=min(lons), max_lon=max(lons)
         )
 
         # Calculate grid cell sizes based on center latitude
@@ -87,18 +88,22 @@ class SpatialGrid:
         self.grid_lat_size = self.cell_size_meters * self.lat_per_meter
         self.grid_lon_size = self.cell_size_meters * self.lon_per_meter
 
-        logger.info(f"Grid parameters: lat_size={self.grid_lat_size:.6f}°, lon_size={self.grid_lon_size:.6f}°")
+        logger.info(
+            f"Grid parameters: lat_size={self.grid_lat_size:.6f}°, lon_size={self.grid_lon_size:.6f}°"
+        )
 
         # Add all nodes to grid
         nodes_added = 0
         for node_id, data in graph.nodes(data=True):
-            lat, lon = data['y'], data['x']
+            lat, lon = data["y"], data["x"]
             self.add_node(node_id, lat, lon)
             nodes_added += 1
 
         logger.info(f"Added {nodes_added} nodes to spatial grid across {len(self.grid)} cells")
-        logger.info(f"Grid coverage: {self.bounds.min_lat:.4f} to {self.bounds.max_lat:.4f} lat, "
-                   f"{self.bounds.min_lon:.4f} to {self.bounds.max_lon:.4f} lon")
+        logger.info(
+            f"Grid coverage: {self.bounds.min_lat:.4f} to {self.bounds.max_lat:.4f} lat, "
+            f"{self.bounds.min_lon:.4f} to {self.bounds.max_lon:.4f} lon"
+        )
 
     def add_node(self, node_id: int, lat: float, lon: float) -> tuple[int, int]:
         """
@@ -126,7 +131,7 @@ class SpatialGrid:
                 grid_y=grid_y,
                 center_lat=cell_center_lat,
                 center_lon=cell_center_lon,
-                nodes=set()
+                nodes=set(),
             )
 
         # Add node to cell
@@ -192,7 +197,9 @@ class SpatialGrid:
         grid_x, grid_y = self._lat_lon_to_grid(lat, lon)
         return self.grid.get((grid_x, grid_y))
 
-    def get_neighboring_cells(self, lat: float, lon: float, radius_cells: int = 1) -> list[GridCell]:
+    def get_neighboring_cells(
+        self, lat: float, lon: float, radius_cells: int = 1
+    ) -> list[GridCell]:
         """
         Get neighboring grid cells around a location.
 
@@ -222,7 +229,7 @@ class SpatialGrid:
 
     def _lat_lon_to_grid(self, lat: float, lon: float) -> tuple[int, int]:
         """Convert lat/lon coordinates to grid coordinates."""
-        if self.bounds is None:
+        if self.bounds is None or self.grid_lon_size is None or self.grid_lat_size is None:
             raise ValueError("Grid bounds not set")
 
         # Normalize to grid origin
@@ -237,7 +244,7 @@ class SpatialGrid:
 
     def _grid_to_lat_lon(self, grid_x: int, grid_y: int) -> tuple[float, float]:
         """Convert grid coordinates to lat/lon (cell center)."""
-        if self.bounds is None:
+        if self.bounds is None or self.grid_lat_size is None or self.grid_lon_size is None:
             raise ValueError("Grid bounds not set")
 
         # Calculate cell center
@@ -248,19 +255,19 @@ class SpatialGrid:
 
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance between two points in meters."""
-        R = 6371000  # Earth's radius in meters
+        earth_radius_m = 6371000  # Earth's radius in meters
 
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
         dlat_rad = math.radians(lat2 - lat1)
         dlon_rad = math.radians(lon2 - lon1)
 
-        a = (math.sin(dlat_rad/2) * math.sin(dlat_rad/2) +
-             math.cos(lat1_rad) * math.cos(lat2_rad) *
-             math.sin(dlon_rad/2) * math.sin(dlon_rad/2))
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        a = math.sin(dlat_rad / 2) * math.sin(dlat_rad / 2) + math.cos(lat1_rad) * math.cos(
+            lat2_rad
+        ) * math.sin(dlon_rad / 2) * math.sin(dlon_rad / 2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        return R * c
+        return earth_radius_m * c
 
     def get_statistics(self) -> dict:
         """Get statistics about the spatial grid."""
@@ -280,10 +287,18 @@ class SpatialGrid:
             "min_nodes_per_cell": min(nodes_per_cell) if nodes_per_cell else 0,
             "cell_size_meters": self.cell_size_meters,
             "grid_coverage": {
-                "lat_range": f"{self.bounds.min_lat:.4f} to {self.bounds.max_lat:.4f}",
-                "lon_range": f"{self.bounds.min_lon:.4f} to {self.bounds.max_lon:.4f}",
-                "total_area_km2": self._calculate_coverage_area()
-            }
+                "lat_range": (
+                    f"{self.bounds.min_lat:.4f} to {self.bounds.max_lat:.4f}"
+                    if self.bounds
+                    else "unknown"
+                ),
+                "lon_range": (
+                    f"{self.bounds.min_lon:.4f} to {self.bounds.max_lon:.4f}"
+                    if self.bounds
+                    else "unknown"
+                ),
+                "total_area_km2": self._calculate_coverage_area(),
+            },
         }
 
         return stats
@@ -295,13 +310,11 @@ class SpatialGrid:
 
         # Rough calculation using haversine for the bounds
         lat_distance = self._haversine_distance(
-            self.bounds.min_lat, self.bounds.min_lon,
-            self.bounds.max_lat, self.bounds.min_lon
+            self.bounds.min_lat, self.bounds.min_lon, self.bounds.max_lat, self.bounds.min_lon
         )
 
         lon_distance = self._haversine_distance(
-            self.bounds.min_lat, self.bounds.min_lon,
-            self.bounds.min_lat, self.bounds.max_lon
+            self.bounds.min_lat, self.bounds.min_lon, self.bounds.min_lat, self.bounds.max_lon
         )
 
         area_m2 = lat_distance * lon_distance

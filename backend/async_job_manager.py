@@ -44,6 +44,7 @@ class JobPriority(Enum):
 @dataclass
 class JobResult:
     """Job execution result with comprehensive tracking."""
+
     job_id: str
     status: JobStatus
     result: Any = None
@@ -59,6 +60,7 @@ class JobResult:
 @dataclass
 class AsyncJob:
     """Async job definition with priority and retry logic."""
+
     job_id: str
     job_type: str
     job_function: Callable | str  # Function or function name
@@ -90,9 +92,10 @@ class AsyncJobManager:
 
         # Create bounded thread pool for sync operations to prevent resource exhaustion
         import concurrent.futures
+
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=max(1, min(max_workers, 2)),  # Cap at 2 threads for Pi
-            thread_name_prefix="AsyncJobManager"
+            thread_name_prefix="AsyncJobManager",
         )
 
         # Job storage
@@ -104,7 +107,7 @@ class AsyncJobManager:
             JobPriority.CRITICAL: asyncio.Queue(),
             JobPriority.HIGH: asyncio.Queue(),
             JobPriority.NORMAL: asyncio.Queue(),
-            JobPriority.LOW: asyncio.Queue()
+            JobPriority.LOW: asyncio.Queue(),
         }
 
         self.workers: list[asyncio.Task] = []
@@ -113,18 +116,20 @@ class AsyncJobManager:
 
         # Performance tracking
         self.stats = {
-            'jobs_submitted': 0,
-            'jobs_completed': 0,
-            'jobs_failed': 0,
-            'avg_execution_time_ms': 0.0,
-            'cache_warming_jobs': 0,
-            'route_generation_jobs': 0
+            "jobs_submitted": 0,
+            "jobs_completed": 0,
+            "jobs_failed": 0,
+            "avg_execution_time_ms": 0.0,
+            "cache_warming_jobs": 0,
+            "route_generation_jobs": 0,
         }
 
         # Background tasks
         self.background_tasks: set[asyncio.Task] = set()
 
-        logger.info(f"🚀 AsyncJobManager initialized (workers: {max_workers}, persistence: {persistence_dir})")
+        logger.info(
+            f"🚀 AsyncJobManager initialized (workers: {max_workers}, persistence: {persistence_dir})"
+        )
 
     async def start(self):
         """Start the async job manager with worker pool."""
@@ -169,9 +174,9 @@ class AsyncJobManager:
         try:
             await asyncio.wait_for(
                 asyncio.gather(*self.workers, *self.background_tasks, return_exceptions=True),
-                timeout=30.0
+                timeout=30.0,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Graceful shutdown timeout, forcing stop")
 
         # Persist pending jobs
@@ -185,9 +190,15 @@ class AsyncJobManager:
 
         logger.info("🛑 AsyncJobManager stopped")
 
-    def submit_job(self, job_type: str, job_function: Callable, *args,
-                   priority: JobPriority = JobPriority.NORMAL,
-                   client_id: str | None = None, **kwargs) -> str:
+    def submit_job(
+        self,
+        job_type: str,
+        job_function: Callable,
+        *args,
+        priority: JobPriority = JobPriority.NORMAL,
+        client_id: str | None = None,
+        **kwargs,
+    ) -> str:
         """Submit a job for async execution."""
         job_id = str(uuid.uuid4())
 
@@ -198,7 +209,7 @@ class AsyncJobManager:
             args=args,
             kwargs=kwargs,
             priority=priority,
-            client_id=client_id
+            client_id=client_id,
         )
 
         # Create initial result
@@ -210,13 +221,13 @@ class AsyncJobManager:
         # Add to priority queue
         try:
             self.job_queues[priority].put_nowait(job)
-            self.stats['jobs_submitted'] += 1
+            self.stats["jobs_submitted"] += 1
 
             # Track job types
-            if 'cache_warm' in job_type:
-                self.stats['cache_warming_jobs'] += 1
-            elif 'route' in job_type:
-                self.stats['route_generation_jobs'] += 1
+            if "cache_warm" in job_type:
+                self.stats["cache_warming_jobs"] += 1
+            elif "route" in job_type:
+                self.stats["route_generation_jobs"] += 1
 
             logger.info(f"📥 Job {job_id} ({job_type}) submitted (priority: {priority.name})")
 
@@ -230,11 +241,7 @@ class AsyncJobManager:
     def submit_background_job(self, job_type: str, job_function: Callable, *args, **kwargs) -> str:
         """Submit a low-priority background job for cache warming."""
         return self.submit_job(
-            f"background_{job_type}",
-            job_function,
-            *args,
-            priority=JobPriority.LOW,
-            **kwargs
+            f"background_{job_type}", job_function, *args, priority=JobPriority.LOW, **kwargs
         )
 
     def get_job_status(self, job_id: str) -> JobResult | None:
@@ -257,7 +264,7 @@ class AsyncJobManager:
         while time.time() - start_time < timeout and self.running:
             if self.is_job_complete(job_id):
                 return self.results.get(job_id)
-            
+
             await asyncio.sleep(poll_interval)
 
             # Gradually increase polling interval to reduce CPU usage
@@ -304,7 +311,12 @@ class AsyncJobManager:
             try:
                 # Check queues by priority (highest first)
                 job = None
-                for priority in [JobPriority.CRITICAL, JobPriority.HIGH, JobPriority.NORMAL, JobPriority.LOW]:
+                for priority in [
+                    JobPriority.CRITICAL,
+                    JobPriority.HIGH,
+                    JobPriority.NORMAL,
+                    JobPriority.LOW,
+                ]:
                     try:
                         job = self.job_queues[priority].get_nowait()
                         break
@@ -349,9 +361,12 @@ class AsyncJobManager:
             else:
                 # Run sync function in bounded thread pool to avoid resource exhaustion
                 loop = asyncio.get_event_loop()
-                job_result = await loop.run_in_executor(
-                    self.thread_pool, lambda: job.job_function(*job.args, **job.kwargs)
-                )
+
+                # Create a proper callable wrapper
+                def sync_wrapper():
+                    return job.job_function(*job.args, **job.kwargs)  # type: ignore[misc]
+
+                job_result = await loop.run_in_executor(self.thread_pool, sync_wrapper)
 
             # Success
             execution_time = (time.perf_counter() - start_time) * 1000
@@ -363,11 +378,11 @@ class AsyncJobManager:
             result.progress = 1.0
 
             # Update stats
-            self.stats['jobs_completed'] += 1
-            self.stats['avg_execution_time_ms'] = (
-                (self.stats['avg_execution_time_ms'] * (self.stats['jobs_completed'] - 1) + execution_time)
-                / self.stats['jobs_completed']
-            )
+            self.stats["jobs_completed"] += 1
+            self.stats["avg_execution_time_ms"] = (
+                self.stats["avg_execution_time_ms"] * (self.stats["jobs_completed"] - 1)
+                + execution_time
+            ) / self.stats["jobs_completed"]
 
             logger.info(f"✅ Job {job_id} completed in {execution_time:.1f}ms")
 
@@ -383,7 +398,7 @@ class AsyncJobManager:
             result.error = str(e)
             result.completed_at = time.time()
 
-            self.stats['jobs_failed'] += 1
+            self.stats["jobs_failed"] += 1
 
             logger.error(f"❌ Job {job_id} failed: {e}")
 
@@ -410,8 +425,9 @@ class AsyncJobManager:
 
         old_jobs = []
         for job_id, result in self.results.items():
-            if (result.completed_at and result.completed_at < cutoff_time) or \
-               (result.created_at < cutoff_time and self.is_job_complete(job_id)):
+            if (result.completed_at and result.completed_at < cutoff_time) or (
+                result.created_at < cutoff_time and self.is_job_complete(job_id)
+            ):
                 old_jobs.append(job_id)
 
         for job_id in old_jobs:
@@ -436,25 +452,25 @@ class AsyncJobManager:
                 result = self.results[job_id]
                 if result.status in [JobStatus.PENDING, JobStatus.RUNNING]:
                     persistent_jobs[job_id] = {
-                        'job_id': job.job_id,
-                        'job_type': job.job_type,
-                        'args': job.args,
-                        'kwargs': job.kwargs,
-                        'priority': job.priority.value,
-                        'created_at': job.created_at,
-                        'client_id': job.client_id
+                        "job_id": job.job_id,
+                        "job_type": job.job_type,
+                        "args": job.args,
+                        "kwargs": job.kwargs,
+                        "priority": job.priority.value,
+                        "created_at": job.created_at,
+                        "client_id": job.client_id,
                     }
                     persistent_results[job_id] = asdict(result)
 
             state = {
-                'jobs': persistent_jobs,
-                'results': persistent_results,
-                'stats': self.stats,
-                'timestamp': time.time()
+                "jobs": persistent_jobs,
+                "results": persistent_results,
+                "stats": self.stats,
+                "timestamp": time.time(),
             }
 
             # Atomic write with backup
-            with open(temp_file, 'w') as f:
+            with open(temp_file, "w") as f:
                 json.dump(state, f, indent=2)
 
             # Create backup of existing file
@@ -496,13 +512,13 @@ class AsyncJobManager:
                     return
 
             # Restore stats
-            self.stats.update(state.get('stats', {}))
+            self.stats.update(state.get("stats", {}))
 
             # Restore pending jobs (skip running ones - they're stale)
             restored_count = 0
-            for job_id, _job_data in state.get('jobs', {}).items():
-                result_data = state.get('results', {}).get(job_id)
-                if result_data and result_data['status'] == JobStatus.PENDING.value:
+            for job_id, _job_data in state.get("jobs", {}).items():
+                result_data = state.get("results", {}).get(job_id)
+                if result_data and result_data["status"] == JobStatus.PENDING.value:
                     # Restore job (note: function reference is lost, will need to handle this)
                     # For now, mark as failed and log for manual retry
                     result = JobResult(**result_data)
@@ -525,11 +541,11 @@ class AsyncJobManager:
 
         return {
             **self.stats,
-            'active_jobs': active_jobs,
-            'pending_jobs': pending_jobs,
-            'queue_sizes': queue_sizes,
-            'workers': len(self.workers),
-            'running': self.running
+            "active_jobs": active_jobs,
+            "pending_jobs": pending_jobs,
+            "queue_sizes": queue_sizes,
+            "workers": len(self.workers),
+            "running": self.running,
         }
 
 
@@ -538,9 +554,14 @@ job_manager = AsyncJobManager()
 
 
 # Convenience functions for route operations
-async def submit_route_job(operation_name: str, operation_func: Callable, *args,
-                          priority: JobPriority = JobPriority.NORMAL,
-                          client_id: str | None = None, **kwargs) -> str:
+async def submit_route_job(
+    operation_name: str,
+    operation_func: Callable,
+    *args,
+    priority: JobPriority = JobPriority.NORMAL,
+    client_id: str | None = None,
+    **kwargs,
+) -> str:
     """Submit a route operation as async job."""
     return job_manager.submit_job(
         f"route_{operation_name}",
@@ -548,19 +569,15 @@ async def submit_route_job(operation_name: str, operation_func: Callable, *args,
         *args,
         priority=priority,
         client_id=client_id,
-        **kwargs
+        **kwargs,
     )
 
 
-async def submit_cache_warming_job(area_lat: float, area_lon: float,
-                                  warming_func: Callable, **kwargs) -> str:
+async def submit_cache_warming_job(
+    area_lat: float, area_lon: float, warming_func: Callable, **kwargs
+) -> str:
     """Submit a cache warming job for an area."""
-    return job_manager.submit_background_job(
-        "cache_warm_area",
-        warming_func,
-        area_lat,
-        area_lon
-    )
+    return job_manager.submit_background_job("cache_warm_area", warming_func, area_lat, area_lon)
 
 
 async def get_job_result(job_id: str, timeout: float = 30.0) -> Any | None:

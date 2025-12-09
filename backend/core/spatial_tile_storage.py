@@ -19,6 +19,7 @@ from loguru import logger
 @dataclass
 class TileInfo:
     """Information about a cached tile."""
+
     geohash: str
     bbox: tuple[float, float, float, float]  # (min_lat, min_lon, max_lat, max_lon)
     node_count: int
@@ -104,12 +105,15 @@ class SpatialTileStorage:
         max_lon = lon + lon_delta
 
         # Find all tiles that intersect this bounding box
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT geohash FROM tiles
             WHERE max_lat >= ? AND min_lat <= ?
             AND max_lon >= ? AND min_lon <= ?
             ORDER BY last_accessed DESC
-        """, (min_lat, max_lat, min_lon, max_lon))
+        """,
+            (min_lat, max_lat, min_lon, max_lon),
+        )
 
         covering_tiles = [row[0] for row in cursor.fetchall()]
 
@@ -130,8 +134,10 @@ class SpatialTileStorage:
 
         # Add neighbors for coverage (geohash neighbors share boundaries)
         try:
-            neighbors = geohash2.neighbors(center_hash)
-            needed_hashes.update(neighbors.values())
+            # geohash2.neighbors returns a dict, get its values
+            if hasattr(geohash2, "neighbors"):
+                neighbors = geohash2.neighbors(center_hash)  # type: ignore[attr-defined]
+                needed_hashes.update(neighbors.values())
         except Exception:
             # Fallback to just center if neighbors fail
             pass
@@ -157,7 +163,9 @@ class SpatialTileStorage:
             hashable_items.append((key, hashable_value))
         return tuple(hashable_items)
 
-    def load_graph_for_area(self, lat: float, lon: float, radius_m: float = 8000) -> nx.MultiGraph | None:
+    def load_graph_for_area(
+        self, lat: float, lon: float, radius_m: float = 8000
+    ) -> nx.MultiGraph | None:
         """
         Load a graph covering the requested area from tiles.
         If no tiles exist, automatically downloads OSM data with geometry.
@@ -174,7 +182,9 @@ class SpatialTileStorage:
                 existing_tiles.append(geohash)
 
         if not existing_tiles:
-            logger.info(f"No existing tiles found for area ({lat:.6f}, {lon:.6f}), loading from OSM with geometry")
+            logger.info(
+                f"No existing tiles found for area ({lat:.6f}, {lon:.6f}), loading from OSM with geometry"
+            )
             return self._load_osm_and_create_tiles(lat, lon, radius_m)
 
         # Use only existing tiles for loading
@@ -191,7 +201,7 @@ class SpatialTileStorage:
                     combined_graph = tile_graph.copy()
                 else:
                     # Merge graphs (NetworkX handles node/edge deduplication)
-                    combined_graph = nx.compose(combined_graph, tile_graph)
+                    combined_graph = nx.compose(combined_graph, tile_graph)  # type: ignore[arg-type]
                 tiles_loaded += 1
 
                 # Update access time
@@ -201,25 +211,33 @@ class SpatialTileStorage:
             # Ensure the combined graph has proper OSMnx CRS metadata
             if combined_graph is not None:
                 # Set CRS and other OSMnx metadata that might be missing
-                combined_graph.graph['crs'] = 'epsg:4326'
-                if 'created_with' not in combined_graph.graph:
-                    combined_graph.graph['created_with'] = 'osmnx'
-                if 'simplified' not in combined_graph.graph:
-                    combined_graph.graph['simplified'] = True
+                combined_graph.graph["crs"] = "epsg:4326"
+                if "created_with" not in combined_graph.graph:
+                    combined_graph.graph["created_with"] = "osmnx"
+                if "simplified" not in combined_graph.graph:
+                    combined_graph.graph["simplified"] = True
 
                 # Ensure connectivity by using largest connected component
                 if not nx.is_connected(combined_graph.to_undirected()):
-                    logger.warning(f"Combined graph has {nx.number_connected_components(combined_graph.to_undirected())} components, using largest")
-                    largest_cc = max(nx.connected_components(combined_graph.to_undirected()), key=len)
+                    logger.warning(
+                        f"Combined graph has {nx.number_connected_components(combined_graph.to_undirected())} components, using largest"
+                    )
+                    largest_cc = max(
+                        nx.connected_components(combined_graph.to_undirected()), key=len
+                    )
                     combined_graph = combined_graph.subgraph(largest_cc).copy()
-                    logger.info(f"Using largest connected component: {len(combined_graph.nodes)} nodes")
+                    logger.info(
+                        f"Using largest connected component: {len(combined_graph.nodes)} nodes"
+                    )
 
             logger.info(f"Loaded graph from {tiles_loaded} tiles covering ({lat:.6f}, {lon:.6f})")
-            return combined_graph
+            return combined_graph  # type: ignore[return-value]
 
         return None
 
-    def _load_osm_and_create_tiles(self, lat: float, lon: float, radius_m: float = 8000) -> nx.MultiGraph | None:
+    def _load_osm_and_create_tiles(
+        self, lat: float, lon: float, radius_m: float = 8000
+    ) -> nx.MultiGraph | None:
         """
         Load OSM data with geometry and create tiles automatically.
         This ensures new areas always have proper geometry data.
@@ -227,27 +245,31 @@ class SpatialTileStorage:
         try:
             import osmnx as ox
 
-            logger.info(f"Loading OSM data with geometry for ({lat:.6f}, {lon:.6f}), radius={radius_m}m")
+            logger.info(
+                f"Loading OSM data with geometry for ({lat:.6f}, {lon:.6f}), radius={radius_m}m"
+            )
 
             # Load with proper parameters to ensure route visualization with geometry
             try:
                 graph = ox.graph_from_point(
                     (lat, lon),
                     dist=radius_m,
-                    network_type='walk',
+                    network_type="walk",
                     retain_all=True,
                     truncate_by_edge=True,
-                    simplify=False  # Keep intermediate nodes for better geometry
+                    simplify=False,  # Keep intermediate nodes for better geometry
                 )
             except Exception as osm_error:
-                logger.warning(f"Initial OSM load failed: {osm_error}, trying with simplified parameters...")
+                logger.warning(
+                    f"Initial OSM load failed: {osm_error}, trying with simplified parameters..."
+                )
                 # Fallback to simpler parameters
                 try:
                     graph = ox.graph_from_point(
                         (lat, lon),
                         dist=radius_m,
-                        network_type='walk',
-                        simplify=True  # Allow simplification as fallback
+                        network_type="walk",
+                        simplify=True,  # Allow simplification as fallback
                     )
                     logger.info("✅ OSM load succeeded with simplified parameters")
                 except Exception as fallback_error:
@@ -258,39 +280,46 @@ class SpatialTileStorage:
             logger.info("Adding geometry data to edges...")
             try:
                 # Convert to GeoDataFrames to get geometries
-                gdf_nodes, gdf_edges = ox.graph_to_gdfs(graph)
+                _gdf_nodes, gdf_edges = ox.graph_to_gdfs(graph)
 
                 # Add geometry from GeoDataFrame back to graph edges
                 for idx, edge_data in gdf_edges.iterrows():
-                    u, v, key = idx
-                    if hasattr(edge_data, 'geometry') and edge_data.geometry is not None:
-                        graph[u][v][key]['geometry'] = edge_data.geometry
+                    # idx is a tuple of (u, v, key) for MultiGraph edges
+                    if isinstance(idx, tuple) and len(idx) >= 3:
+                        u, v, key = idx[0], idx[1], idx[2]
+                        if hasattr(edge_data, "geometry") and edge_data.geometry is not None:
+                            graph[u][v][key]["geometry"] = edge_data.geometry
 
             except Exception as e:
                 logger.warning(f"Could not add detailed geometry: {e}")
                 # Fallback: create simple line geometries between nodes
                 try:
                     from shapely.geometry import LineString
-                    for u, v, _key, edge_data in graph.edges(keys=True, data=True):
-                        if 'geometry' not in edge_data:
-                            u_coord = (graph.nodes[u]['x'], graph.nodes[u]['y'])
-                            v_coord = (graph.nodes[v]['x'], graph.nodes[v]['y'])
-                            edge_data['geometry'] = LineString([u_coord, v_coord])
+
+                    for u, v, _key, edge_data in graph.edges(keys=True, data=True):  # type: ignore[call-overload]
+                        if "geometry" not in edge_data:
+                            u_coord = (graph.nodes[u]["x"], graph.nodes[u]["y"])
+                            v_coord = (graph.nodes[v]["x"], graph.nodes[v]["y"])
+                            edge_data["geometry"] = LineString([u_coord, v_coord])
                 except Exception as e2:
                     logger.warning(f"Could not create fallback geometry: {e2}")
 
-            logger.info(f"Loaded OSM graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
+            logger.info(
+                f"Loaded OSM graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges"
+            )
 
             # Verify geometry data
             geometry_count = 0
             total_edges = 0
             for _u, _v, data in graph.edges(data=True):
                 total_edges += 1
-                if 'geometry' in data and data['geometry'] is not None:
+                if "geometry" in data and data["geometry"] is not None:
                     geometry_count += 1
 
             geometry_percentage = (geometry_count / total_edges * 100) if total_edges > 0 else 0
-            logger.info(f"Geometry coverage: {geometry_count}/{total_edges} edges ({geometry_percentage:.1f}%)")
+            logger.info(
+                f"Geometry coverage: {geometry_count}/{total_edges} edges ({geometry_percentage:.1f}%)"
+            )
 
             # Store as tiles for future use
             stored_tiles = self.store_graph_tiles(graph, lat, lon, radius_m, set())
@@ -305,8 +334,14 @@ class SpatialTileStorage:
             logger.error(f"Failed to load OSM data: {e}")
             return None
 
-    def store_graph_tiles(self, graph: nx.MultiGraph, center_lat: float, center_lon: float,
-                         radius_m: float = 8000, semantic_features: set[str] = None) -> list[str]:
+    def store_graph_tiles(
+        self,
+        graph: nx.MultiGraph,
+        center_lat: float,
+        center_lon: float,
+        radius_m: float = 8000,
+        semantic_features: set[str] | None = None,
+    ) -> list[str]:
         """
         Store a graph by splitting it into spatial tiles.
 
@@ -320,16 +355,16 @@ class SpatialTileStorage:
         geohash_groups = {}
 
         for node_id, data in graph.nodes(data=True):
-            lat, lon = data.get('y'), data.get('x')
+            lat, lon = data.get("y"), data.get("x")
             if lat is None or lon is None:
                 continue
 
             geohash = geohash2.encode(lat, lon, precision=self.default_precision)
 
             if geohash not in geohash_groups:
-                geohash_groups[geohash] = {'nodes': set(), 'edges': set()}
+                geohash_groups[geohash] = {"nodes": set(), "edges": set()}
 
-            geohash_groups[geohash]['nodes'].add(node_id)
+            geohash_groups[geohash]["nodes"].add(node_id)
 
         # Add edges to appropriate tiles and ensure boundary nodes are included
         for edge in graph.edges(data=True):
@@ -339,8 +374,8 @@ class SpatialTileStorage:
             node1_data = graph.nodes.get(node1, {})
             node2_data = graph.nodes.get(node2, {})
 
-            lat1, lon1 = node1_data.get('y'), node1_data.get('x')
-            lat2, lon2 = node2_data.get('y'), node2_data.get('x')
+            lat1, lon1 = node1_data.get("y"), node1_data.get("x")
+            lat2, lon2 = node2_data.get("y"), node2_data.get("x")
 
             if all([lat1, lon1, lat2, lon2]):
                 hash1 = geohash2.encode(lat1, lon1, precision=self.default_precision)
@@ -352,16 +387,18 @@ class SpatialTileStorage:
                 # Add edge to both tiles (ensures connectivity across boundaries)
                 for geohash in [hash1, hash2]:
                     if geohash in geohash_groups:
-                        geohash_groups[geohash]['edges'].add((node1, node2, hashable_edge_data))
+                        geohash_groups[geohash]["edges"].add((node1, node2, hashable_edge_data))
 
                         # Ensure both nodes are included in tiles that have this edge
-                        geohash_groups[geohash]['nodes'].add(node1)
-                        geohash_groups[geohash]['nodes'].add(node2)
+                        geohash_groups[geohash]["nodes"].add(node1)
+                        geohash_groups[geohash]["nodes"].add(node2)
 
         # Store each tile
         for geohash, tile_data in geohash_groups.items():
-            if len(tile_data['nodes']) > 0:  # Only store non-empty tiles
-                tile_graph = self._create_tile_subgraph(graph, tile_data['nodes'], tile_data['edges'])
+            if len(tile_data["nodes"]) > 0:  # Only store non-empty tiles
+                tile_graph = self._create_tile_subgraph(
+                    graph, tile_data["nodes"], tile_data["edges"]
+                )
                 tile_path = self._store_tile_graph(geohash, tile_graph, semantic_features)
 
                 if tile_path:
@@ -370,7 +407,9 @@ class SpatialTileStorage:
         logger.info(f"Stored graph as {len(stored_tiles)} tiles")
         return stored_tiles
 
-    def _create_tile_subgraph(self, full_graph: nx.MultiGraph, nodes: set, edges: set) -> nx.MultiGraph:
+    def _create_tile_subgraph(
+        self, full_graph: nx.MultiGraph, nodes: set, edges: set
+    ) -> nx.MultiGraph:
         """Create a subgraph for a tile with geometry preservation."""
         tile_graph = nx.MultiGraph()
 
@@ -388,19 +427,22 @@ class SpatialTileStorage:
             edge_data = dict(edge_data_tuple)
 
             # Explicitly check for and preserve geometry data
-            if 'geometry' in edge_data and edge_data['geometry'] is not None:
+            if "geometry" in edge_data and edge_data["geometry"] is not None:
                 geometry_preserved += 1
 
             if node1 in tile_graph.nodes and node2 in tile_graph.nodes:
                 tile_graph.add_edge(node1, node2, **edge_data)
 
         if total_edges > 0:
-            logger.debug(f"Tile subgraph: {geometry_preserved}/{total_edges} edges have geometry ({geometry_preserved/total_edges*100:.1f}%)")
+            logger.debug(
+                f"Tile subgraph: {geometry_preserved}/{total_edges} edges have geometry ({geometry_preserved / total_edges * 100:.1f}%)"
+            )
 
         return tile_graph
 
-    def _store_tile_graph(self, geohash: str, graph: nx.MultiGraph,
-                         semantic_features: set[str]) -> Path | None:
+    def _store_tile_graph(
+        self, geohash: str, graph: nx.MultiGraph, semantic_features: set[str]
+    ) -> Path | None:
         """Store a single tile graph to disk."""
         try:
             # Calculate bounding box for this geohash
@@ -416,33 +458,47 @@ class SpatialTileStorage:
 
             # Store graph data
             tile_data = {
-                'graph': graph,
-                'geohash': geohash,
-                'bbox': bbox,
-                'semantic_features': list(semantic_features),
-                'created_at': time.time()
+                "graph": graph,
+                "geohash": geohash,
+                "bbox": bbox,
+                "semantic_features": list(semantic_features),
+                "created_at": time.time(),
             }
 
-            with open(tile_file, 'wb') as f:
+            with open(tile_file, "wb") as f:
                 pickle.dump(tile_data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
             file_size = tile_file.stat().st_size
 
             # Update database index
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT OR REPLACE INTO tiles
                 (geohash, precision, min_lat, min_lon, max_lat, max_lon,
                  node_count, edge_count, created_at, last_accessed,
                  file_size_bytes, semantic_features)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                geohash, self.default_precision, min_lat, min_lon, max_lat, max_lon,
-                len(graph.nodes), len(graph.edges), time.time(), time.time(),
-                file_size, json.dumps(list(semantic_features))
-            ))
+            """,
+                (
+                    geohash,
+                    self.default_precision,
+                    min_lat,
+                    min_lon,
+                    max_lat,
+                    max_lon,
+                    len(graph.nodes),
+                    len(graph.edges),
+                    time.time(),
+                    time.time(),
+                    file_size,
+                    json.dumps(list(semantic_features)),
+                ),
+            )
             self.conn.commit()
 
-            logger.debug(f"Stored tile {geohash}: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+            logger.debug(
+                f"Stored tile {geohash}: {len(graph.nodes)} nodes, {len(graph.edges)} edges"
+            )
             return tile_file
 
         except Exception as e:
@@ -462,10 +518,10 @@ class SpatialTileStorage:
             return None
 
         try:
-            with open(tile_file, 'rb') as f:
+            with open(tile_file, "rb") as f:
                 tile_data = pickle.load(f)
 
-            return tile_data['graph']
+            return tile_data["graph"]
 
         except Exception as e:
             logger.error(f"Failed to load tile {geohash}: {e}")
@@ -473,9 +529,12 @@ class SpatialTileStorage:
 
     def _update_tile_access(self, geohash: str):
         """Update last accessed time for a tile."""
-        self.conn.execute("""
+        self.conn.execute(
+            """
             UPDATE tiles SET last_accessed = ? WHERE geohash = ?
-        """, (time.time(), geohash))
+        """,
+            (time.time(), geohash),
+        )
         self.conn.commit()
 
     def _log_stats(self):
@@ -488,8 +547,9 @@ class SpatialTileStorage:
         else:
             logger.info("Tile storage: empty")
 
-    def precompute_city_tiles(self, city_coords: list[tuple[float, float, str]],
-                            radius_m: float = 15000):
+    def precompute_city_tiles(
+        self, city_coords: list[tuple[float, float, str]], radius_m: float = 15000
+    ):
         """
         Precompute tiles for major cities.
 
@@ -515,16 +575,19 @@ class SpatialTileStorage:
         """Estimate number of tiles needed for a radius."""
         # Rough calculation based on geohash tile size
         tile_size_m = 1200  # Approximate size of precision-6 geohash tile
-        area_tiles = (radius_m * 2) ** 2 / (tile_size_m ** 2)
+        area_tiles = (radius_m * 2) ** 2 / (tile_size_m**2)
         return int(area_tiles * 1.5)  # Add buffer for coverage
 
     def cleanup_old_tiles(self, max_age_days: int = 90):
         """Clean up tiles that haven't been accessed recently."""
         cutoff_time = time.time() - (max_age_days * 24 * 3600)
 
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT geohash FROM tiles WHERE last_accessed < ?
-        """, (cutoff_time,))
+        """,
+            (cutoff_time,),
+        )
 
         old_tiles = [row[0] for row in cursor.fetchall()]
 
@@ -557,7 +620,7 @@ class SpatialTileStorage:
         cursor = self.conn.execute("""
             SELECT precision, COUNT(*) FROM tiles GROUP BY precision
         """)
-        stats['precision_breakdown'] = dict(cursor.fetchall())
+        stats["precision_breakdown"] = dict(cursor.fetchall())
 
         return stats
 

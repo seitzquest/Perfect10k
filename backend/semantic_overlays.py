@@ -18,6 +18,7 @@ from loguru import logger
 @dataclass
 class BoundingBox:
     """Geographic bounding box for OSM queries."""
+
     south: float
     west: float
     north: float
@@ -70,8 +71,8 @@ class SemanticOverlayManager:
                     "color": "#228B22",
                     "fillColor": "#32CD32",
                     "fillOpacity": 0.3,
-                    "weight": 1
-                }
+                    "weight": 1,
+                },
             },
             "rivers": {
                 "overpass_query": """
@@ -85,11 +86,7 @@ class SemanticOverlayManager:
                     );
                     out geom;
                 """,
-                "style": {
-                    "color": "#0077BE",
-                    "weight": 2,
-                    "opacity": 0.8
-                }
+                "style": {"color": "#0077BE", "weight": 2, "opacity": 0.8},
             },
             "lakes": {
                 "overpass_query": """
@@ -106,8 +103,8 @@ class SemanticOverlayManager:
                     "color": "#0077BE",
                     "fillColor": "#87CEEB",
                     "fillOpacity": 0.4,
-                    "weight": 1
-                }
+                    "weight": 1,
+                },
             },
             "parks": {
                 "overpass_query": """
@@ -125,9 +122,9 @@ class SemanticOverlayManager:
                     "color": "#228B22",
                     "fillColor": "#90EE90",
                     "fillOpacity": 0.3,
-                    "weight": 1
-                }
-            }
+                    "weight": 1,
+                },
+            },
         }
 
     def _generate_cache_key(self, feature_type: str, bbox: BoundingBox) -> str:
@@ -164,7 +161,7 @@ class SemanticOverlayManager:
                 self.overpass_url,
                 data=query,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=60
+                timeout=60,
             )
             response.raise_for_status()
 
@@ -201,15 +198,12 @@ class SemanticOverlayManager:
 
                 feature = {
                     "type": "Feature",
-                    "geometry": {
-                        "type": geometry_type,
-                        "coordinates": coordinates
-                    },
+                    "geometry": {"type": geometry_type, "coordinates": coordinates},
                     "properties": {
                         "id": element.get("id"),
                         "tags": element.get("tags", {}),
-                        "feature_type": feature_type
-                    }
+                        "feature_type": feature_type,
+                    },
                 }
                 features.append(feature)
 
@@ -226,11 +220,13 @@ class SemanticOverlayManager:
             "metadata": {
                 "feature_type": feature_type,
                 "generated_at": time.time(),
-                "total_features": len(features)
-            }
+                "total_features": len(features),
+            },
         }
 
-    def get_semantic_overlays(self, feature_type: str, bbox: BoundingBox, use_cache: bool = True) -> dict:
+    def get_semantic_overlays(
+        self, feature_type: str, bbox: BoundingBox, use_cache: bool = True
+    ) -> dict:
         """Get semantic overlay data for a specific feature type and area."""
         cache_key = self._generate_cache_key(feature_type, bbox)
         cache_path = self._get_cache_path(cache_key)
@@ -264,7 +260,7 @@ class SemanticOverlayManager:
 
             # Cache the data
             try:
-                with open(cache_path, 'w') as f:
+                with open(cache_path, "w") as f:
                     json.dump(geojson_data, f, indent=2)
                 logger.info(f"Cached {feature_type} data: {cache_key}")
             except OSError as e:
@@ -279,29 +275,28 @@ class SemanticOverlayManager:
                 "type": "FeatureCollection",
                 "features": [],
                 "style": self.feature_configs[feature_type]["style"],
-                "error": str(e)
+                "error": str(e),
             }
 
     def get_all_overlays(self, bbox: BoundingBox, use_cache: bool = True) -> dict[str, dict]:
         """Get all semantic overlay types for a given area."""
         overlays = {}
 
-        for feature_type in self.feature_configs.keys():
+        for feature_type in self.feature_configs:
             overlays[feature_type] = self.get_semantic_overlays(feature_type, bbox, use_cache)
 
         return overlays
 
-    def calculate_bbox_from_center(self, lat: float, lon: float, radius_km: float = 2.0) -> BoundingBox:
+    def calculate_bbox_from_center(
+        self, lat: float, lon: float, radius_km: float = 2.0
+    ) -> BoundingBox:
         """Calculate bounding box from center point and radius."""
         # Rough conversion: 1 degree ≈ 111 km
         lat_delta = radius_km / 111.0
         lon_delta = radius_km / (111.0 * abs(lat / 90.0))  # Adjust for latitude
 
         return BoundingBox(
-            south=lat - lat_delta,
-            west=lon - lon_delta,
-            north=lat + lat_delta,
-            east=lon + lon_delta
+            south=lat - lat_delta, west=lon - lon_delta, north=lat + lat_delta, east=lon + lon_delta
         )
 
     def get_cache_stats(self) -> dict:
@@ -312,7 +307,7 @@ class SemanticOverlayManager:
         return {
             "total_cached_areas": len(cache_files),
             "cache_size_mb": round(total_size / (1024 * 1024), 2),
-            "cache_directory": str(self.cache_dir)
+            "cache_directory": str(self.cache_dir),
         }
 
     def clear_cache(self, older_than_hours: int | None = None) -> int:
@@ -338,8 +333,9 @@ class SemanticOverlayManager:
         logger.info(f"Cleared {cleared_count} cache files")
         return cleared_count
 
-    def score_location_semantics(self, lat: float, lon: float,
-                                property_names: list[str] | None = None) -> dict[str, float]:
+    def score_location_semantics(
+        self, lat: float, lon: float, property_names: list[str] | None = None
+    ) -> dict[str, float]:
         """
         Score a location based on proximity to semantic features.
 
@@ -353,7 +349,7 @@ class SemanticOverlayManager:
         """
         # Ensure features are loaded for requested properties
         if property_names is None:
-            property_names = ['forests', 'rivers', 'lakes', 'parks']
+            property_names = ["forests", "rivers", "lakes", "parks"]
 
         # Calculate bounding box for this location (2km radius should be enough)
         bbox = self.calculate_bbox_from_center(lat, lon, 2.0)
@@ -370,8 +366,9 @@ class SemanticOverlayManager:
         # Return neutral scores for API compatibility (scoring handled by interpretable_scorer)
         return {prop: 0.5 for prop in property_names}
 
-    def score_multiple_locations(self, locations: list[tuple[float, float]],
-                               property_names: list[str] | None = None) -> list[dict[str, float]]:
+    def score_multiple_locations(
+        self, locations: list[tuple[float, float]], property_names: list[str] | None = None
+    ) -> list[dict[str, float]]:
         """
         Score multiple locations efficiently.
 
@@ -385,7 +382,7 @@ class SemanticOverlayManager:
         # Semantic scoring is now handled by the interpretable_scorer system
         # Return neutral scores for API compatibility
         if property_names is None:
-            property_names = ['forests', 'rivers', 'lakes', 'parks']
+            property_names = ["forests", "rivers", "lakes", "parks"]
 
         return [{prop: 0.5 for prop in property_names} for _ in locations]
 
@@ -393,17 +390,19 @@ class SemanticOverlayManager:
         """Get information about all semantic properties"""
         # Return basic property info for API compatibility
         return {
-            'forests': {'description': 'Proximity to forest areas', 'type': 'semantic'},
-            'rivers': {'description': 'Proximity to rivers and streams', 'type': 'semantic'},
-            'lakes': {'description': 'Proximity to lakes and water bodies', 'type': 'semantic'},
-            'parks': {'description': 'Proximity to parks and gardens', 'type': 'semantic'}
+            "forests": {"description": "Proximity to forest areas", "type": "semantic"},
+            "rivers": {"description": "Proximity to rivers and streams", "type": "semantic"},
+            "lakes": {"description": "Proximity to lakes and water bodies", "type": "semantic"},
+            "parks": {"description": "Proximity to parks and gardens", "type": "semantic"},
         }
 
     def update_semantic_property(self, property_name: str, **kwargs):
         """Update configuration for a semantic property"""
         # Property updates are now handled by the interpretable_scorer system
         # This method is kept for API compatibility but does nothing
-        logger.info(f"Property update for {property_name} ignored - using interpretable_scorer system")
+        logger.info(
+            f"Property update for {property_name} ignored - using interpretable_scorer system"
+        )
 
     def ensure_features_loaded_for_area(self, lat: float, lon: float, radius_km: float = 2.0):
         """
@@ -417,7 +416,7 @@ class SemanticOverlayManager:
         bbox = self.calculate_bbox_from_center(lat, lon, radius_km)
 
         # Load features for all configured types
-        for feature_type in self.feature_configs.keys():
+        for feature_type in self.feature_configs:
             try:
                 # This will load features into the semantic scorer
                 self.get_semantic_overlays(feature_type, bbox, use_cache=True)

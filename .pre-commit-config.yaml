@@ -1,0 +1,30 @@
+# Base pre-commit configuration for Python projects
+# Install jj-pre-push to auto-run on `jj git push`:
+#   uv tool install jj-pre-push
+#
+# Or run manually:
+#   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.1
+    hooks:
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi, jupyter, toml]
+
+      # Run the linter
+      - id: ruff
+        types_or: [python, pyi, jupyter, toml]
+        args: [--fix]
+
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.390
+    hooks:
+      - id: pyright
+        additional_dependencies: []  # Add project dependencies here if needed
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.22.1
+    hooks:
+      - id: gitleaks

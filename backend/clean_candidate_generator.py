@@ -21,6 +21,7 @@ from spatial_grid import SpatialGrid
 @dataclass
 class CandidateGenerationResult:
     """Result from candidate generation."""
+
     candidates: list[ScoredCandidate]
     generation_time_ms: float
     search_stats: dict[str, Any]
@@ -140,10 +141,15 @@ class CleanCandidateGenerator:
             logger.error(f"Failed to initialize clean candidate generator: {e}")
             return False
 
-    def generate_candidates(self, from_lat: float, from_lon: float,
-                          target_distance: float, preference: str,
-                          exclude_nodes: list[int] | None = None,
-                          existing_route_nodes: list[int] | None = None) -> CandidateGenerationResult:
+    def generate_candidates(
+        self,
+        from_lat: float,
+        from_lon: float,
+        target_distance: float,
+        preference: str,
+        exclude_nodes: list[int] | None = None,
+        existing_route_nodes: list[int] | None = None,
+    ) -> CandidateGenerationResult:
         """
         Generate candidate waypoints for route building.
 
@@ -160,35 +166,39 @@ class CleanCandidateGenerator:
         """
         start_time = time.time()
 
-        if not self.is_initialized:
-            if not self.initialize():
-                return CandidateGenerationResult(
-                    candidates=[],
-                    generation_time_ms=0.0,
-                    search_stats={'error': 'Initialization failed'},
-                    preference_analysis={}
-                )
+        if not self.is_initialized and not self.initialize():
+            return CandidateGenerationResult(
+                candidates=[],
+                generation_time_ms=0.0,
+                search_stats={"error": "Initialization failed"},
+                preference_analysis={},
+            )
 
-        exclude_nodes = set(exclude_nodes or [])
+        exclude_nodes_set = set(exclude_nodes or [])
+        existing_route = existing_route_nodes or []
 
-        logger.info(f"Generating candidates from ({from_lat:.6f}, {from_lon:.6f}) "
-                    f"with target distance {target_distance}m, excluding {len(exclude_nodes)} nodes")
+        logger.info(
+            f"Generating candidates from ({from_lat:.6f}, {from_lon:.6f}) "
+            f"with target distance {target_distance}m, excluding {len(exclude_nodes_set)} nodes"
+        )
 
         # Step 1: Find candidate nodes in target distance range
         candidate_nodes = self._find_candidate_nodes(
-            from_lat, from_lon, target_distance, exclude_nodes, existing_route_nodes
+            from_lat, from_lon, target_distance, exclude_nodes_set, existing_route
         )
 
         logger.info(f"Found {len(candidate_nodes)} candidate nodes in target area")
-        
+
         if not candidate_nodes:
-            logger.warning(f"No candidate nodes found! Target distance: {target_distance}m, "
-                         f"Exclude nodes: {len(exclude_nodes)}, Route nodes: {len(existing_route_nodes)}")
+            logger.warning(
+                f"No candidate nodes found! Target distance: {target_distance}m, "
+                f"Exclude nodes: {len(exclude_nodes_set)}, Route nodes: {len(existing_route)}"
+            )
             return CandidateGenerationResult(
                 candidates=[],
                 generation_time_ms=(time.time() - start_time) * 1000,
-                search_stats={'error': 'No candidate nodes found in target area'},
-                preference_analysis={}
+                search_stats={"error": "No candidate nodes found in target area"},
+                preference_analysis={},
             )
 
         # Step 2: Get features for candidate nodes
@@ -198,8 +208,8 @@ class CleanCandidateGenerator:
             return CandidateGenerationResult(
                 candidates=[],
                 generation_time_ms=(time.time() - start_time) * 1000,
-                search_stats={'error': 'No features available for candidate nodes'},
-                preference_analysis={}
+                search_stats={"error": "No features available for candidate nodes"},
+                preference_analysis={},
             )
 
         # Step 3: Score candidates using interpretable scorer
@@ -222,15 +232,15 @@ class CleanCandidateGenerator:
 
         # Compile search statistics
         search_stats = {
-            'initial_candidate_nodes': len(candidate_nodes),
-            'nodes_with_features': len(candidates_with_features),
-            'scored_candidates': len(scored_candidates),
-            'final_candidates': len(diverse_candidates),
-            'target_distance': target_distance,
-            'search_area_km2': self._calculate_search_area(target_distance),
-            'performance_target_ms': self.target_generation_time_ms,
-            'actual_time_ms': generation_time_ms,
-            'performance_ok': generation_time_ms <= self.target_generation_time_ms
+            "initial_candidate_nodes": len(candidate_nodes),
+            "nodes_with_features": len(candidates_with_features),
+            "scored_candidates": len(scored_candidates),
+            "final_candidates": len(diverse_candidates),
+            "target_distance": target_distance,
+            "search_area_km2": self._calculate_search_area(target_distance),
+            "performance_target_ms": self.target_generation_time_ms,
+            "actual_time_ms": generation_time_ms,
+            "performance_ok": generation_time_ms <= self.target_generation_time_ms,
         }
 
         logger.info(f"Generated {len(diverse_candidates)} candidates in {generation_time_ms:.1f}ms")
@@ -239,23 +249,30 @@ class CleanCandidateGenerator:
             candidates=diverse_candidates,
             generation_time_ms=generation_time_ms,
             search_stats=search_stats,
-            preference_analysis=preference_analysis
+            preference_analysis=preference_analysis,
         )
 
-    def _find_candidate_nodes(self, from_lat: float, from_lon: float,
-                            target_distance: float, exclude_nodes: set,
-                            existing_route_nodes: list[int] | None = None) -> list[tuple[int, float, float]]:
+    def _find_candidate_nodes(
+        self,
+        from_lat: float,
+        from_lon: float,
+        target_distance: float,
+        exclude_nodes: set[int],
+        existing_route_nodes: list[int],
+    ) -> list[tuple[int, float, float]]:
         """Find nodes within target distance range."""
         # Search in an annulus: target_distance ± 50%
         min_distance = target_distance * 0.5
         max_distance = target_distance * 1.5
 
         # Get nodes in search area using spatial grid
-        nearby_nodes = self.spatial_grid.get_nearby_nodes(
-            from_lat, from_lon, max_distance
-        )
+        if self.spatial_grid is None:
+            return []
+        nearby_nodes = self.spatial_grid.get_nearby_nodes(from_lat, from_lon, max_distance)
 
-        logger.info(f"Spatial grid returned {len(nearby_nodes)} nearby nodes within {max_distance}m")
+        logger.info(
+            f"Spatial grid returned {len(nearby_nodes)} nearby nodes within {max_distance}m"
+        )
         logger.info(f"Distance filter: {min_distance}m to {max_distance}m")
 
         candidate_nodes = []
@@ -266,16 +283,15 @@ class CleanCandidateGenerator:
             for route_node_id in existing_route_nodes:
                 if route_node_id in self.graph.nodes:
                     route_data = self.graph.nodes[route_node_id]
-                    route_node_coords.append((route_data['y'], route_data['x']))
+                    route_node_coords.append((route_data["y"], route_data["x"]))
 
         # Adaptive minimum route distance based on search area
         # When search area is small (close to target), use smaller minimum distance
-        if max_distance <= 500:
-            min_route_distance = max(50.0, max_distance * 0.3)  # 30% of search radius, min 50m
-        else:
-            min_route_distance = 300.0  # Standard distance for larger search areas
+        min_route_distance = max(50.0, max_distance * 0.3) if max_distance <= 500 else 300.0
 
-        logger.info(f"Using min_route_distance: {min_route_distance:.0f}m for search area: {max_distance:.0f}m")
+        logger.info(
+            f"Using min_route_distance: {min_route_distance:.0f}m for search area: {max_distance:.0f}m"
+        )
 
         excluded_count = 0
         missing_count = 0
@@ -293,7 +309,7 @@ class CleanCandidateGenerator:
 
             # Get node coordinates
             node_data = self.graph.nodes[node_id]
-            node_lat, node_lon = node_data['y'], node_data['x']
+            node_lat, node_lon = node_data["y"], node_data["x"]
 
             # Check distance from current position
             distance = self._haversine_distance(from_lat, from_lon, node_lat, node_lon)
@@ -316,7 +332,7 @@ class CleanCandidateGenerator:
                 candidate_nodes.append((node_id, node_lat, node_lon))
 
         # Log filtering summary
-        logger.info(f"Candidate filtering summary:")
+        logger.info("Candidate filtering summary:")
         logger.info(f"  Total nearby nodes: {len(nearby_nodes)}")
         logger.info(f"  Excluded nodes: {excluded_count}")
         logger.info(f"  Missing from graph: {missing_count}")
@@ -326,11 +342,13 @@ class CleanCandidateGenerator:
 
         # If no candidates found due to distance filtering, try without distance filter
         if len(candidate_nodes) == 0 and distance_filtered > 0:
-            logger.warning(f"No candidates with distance filter ({min_distance:.0f}m-{max_distance:.0f}m), retrying without distance filter")
-            
+            logger.warning(
+                f"No candidates with distance filter ({min_distance:.0f}m-{max_distance:.0f}m), retrying without distance filter"
+            )
+
             candidate_nodes = []
             distance_filtered = 0
-            
+
             for node_id in nearby_nodes:
                 if node_id in exclude_nodes:
                     continue
@@ -340,26 +358,30 @@ class CleanCandidateGenerator:
 
                 # Get node coordinates
                 node_data = self.graph.nodes[node_id]
-                node_lat, node_lon = node_data['y'], node_data['x']
+                node_lat, node_lon = node_data["y"], node_data["x"]
 
                 # Skip distance check - accept any node in search radius
 
                 # Check proximity to existing route nodes
                 too_close_to_route = False
                 for route_lat, route_lon in route_node_coords:
-                    route_distance = self._haversine_distance(node_lat, node_lon, route_lat, route_lon)
+                    route_distance = self._haversine_distance(
+                        node_lat, node_lon, route_lat, route_lon
+                    )
                     if route_distance < min_route_distance:
                         too_close_to_route = True
                         break
 
                 if not too_close_to_route:
                     candidate_nodes.append((node_id, node_lat, node_lon))
-            
+
             logger.info(f"Without distance filter: found {len(candidate_nodes)} candidates")
 
         # If we filtered out too many candidates, relax the route proximity constraint
         if len(candidate_nodes) < 5 and existing_route_nodes and len(route_node_coords) > 0:
-            logger.warning(f"Only {len(candidate_nodes)} candidates found, relaxing route proximity filter")
+            logger.warning(
+                f"Only {len(candidate_nodes)} candidates found, relaxing route proximity filter"
+            )
             relaxed_min_distance = min_route_distance * 0.5  # Reduce minimum distance by half
 
             # Re-scan with relaxed constraints
@@ -368,7 +390,7 @@ class CleanCandidateGenerator:
                     continue
 
                 node_data = self.graph.nodes[node_id]
-                node_lat, node_lon = node_data['y'], node_data['x']
+                node_lat, node_lon = node_data["y"], node_data["x"]
                 distance = self._haversine_distance(from_lat, from_lon, node_lat, node_lon)
 
                 if not (min_distance <= distance <= max_distance):
@@ -377,33 +399,40 @@ class CleanCandidateGenerator:
                 # Check with relaxed proximity
                 too_close_to_route = False
                 for route_lat, route_lon in route_node_coords:
-                    route_distance = self._haversine_distance(node_lat, node_lon, route_lat, route_lon)
+                    route_distance = self._haversine_distance(
+                        node_lat, node_lon, route_lat, route_lon
+                    )
                     if route_distance < relaxed_min_distance:
                         too_close_to_route = True
                         break
 
-                if not too_close_to_route:
-                    # Check if already added
-                    if (node_id, node_lat, node_lon) not in candidate_nodes:
-                        candidate_nodes.append((node_id, node_lat, node_lon))
+                if not too_close_to_route and (node_id, node_lat, node_lon) not in candidate_nodes:
+                    candidate_nodes.append((node_id, node_lat, node_lon))
 
         # Limit candidates for performance
         if len(candidate_nodes) > self.max_candidates_to_score:
             # Take a representative sample
             step = len(candidate_nodes) // self.max_candidates_to_score
-            candidate_nodes = candidate_nodes[::step][:self.max_candidates_to_score]
+            candidate_nodes = candidate_nodes[::step][: self.max_candidates_to_score]
 
-        logger.debug(f"Found {len(candidate_nodes)} candidate nodes in distance range "
-                    f"{min_distance:.0f}-{max_distance:.0f}m")
+        logger.debug(
+            f"Found {len(candidate_nodes)} candidate nodes in distance range "
+            f"{min_distance:.0f}-{max_distance:.0f}m"
+        )
 
         return candidate_nodes
 
-    def _get_candidate_features(self, candidate_nodes: list[tuple[int, float, float]]) -> list[tuple[tuple[int, float, float], Any]]:
+    def _get_candidate_features(
+        self, candidate_nodes: list[tuple[int, float, float]]
+    ) -> list[tuple[tuple[int, float, float], Any]]:
         """Get pre-computed features for candidate nodes."""
+        if self.feature_database is None:
+            return []
+
         candidates_with_features = []
 
         for candidate in candidate_nodes:
-            node_id, lat, lon = candidate
+            _node_id, lat, lon = candidate
             features = self.feature_database.get_cell_features(lat, lon)
 
             if features:
@@ -412,8 +441,9 @@ class CleanCandidateGenerator:
         logger.debug(f"Retrieved features for {len(candidates_with_features)} candidates")
         return candidates_with_features
 
-    def _score_candidates(self, candidates_with_features: list[tuple[tuple[int, float, float], Any]],
-                         preference: str) -> list[ScoredCandidate]:
+    def _score_candidates(
+        self, candidates_with_features: list[tuple[tuple[int, float, float], Any]], preference: str
+    ) -> list[ScoredCandidate]:
         """Score candidates using interpretable scorer."""
         candidates = [(node_id, lat, lon) for (node_id, lat, lon), _ in candidates_with_features]
         features_list = [features for _, features in candidates_with_features]
@@ -429,16 +459,22 @@ class CleanCandidateGenerator:
             # Keep only the most recent scored nodes
             if len(self.scored_nodes) > self.max_scored_nodes:
                 # Remove oldest entries (simple FIFO)
-                oldest_keys = list(self.scored_nodes.keys())[:-self.max_scored_nodes]
+                oldest_keys = list(self.scored_nodes.keys())[: -self.max_scored_nodes]
                 for old_key in oldest_keys:
                     del self.scored_nodes[old_key]
 
-        logger.debug(f"Scored {len(scored_candidates)} candidates, tracking {len(self.scored_nodes)} total")
+        logger.debug(
+            f"Scored {len(scored_candidates)} candidates, tracking {len(self.scored_nodes)} total"
+        )
         return scored_candidates
 
-    def _apply_probabilistic_selection(self, scored_candidates: list[ScoredCandidate],
-                                     from_lat: float, from_lon: float,
-                                     max_candidates: int = 3) -> list[ScoredCandidate]:
+    def _apply_probabilistic_selection(
+        self,
+        scored_candidates: list[ScoredCandidate],
+        from_lat: float,
+        from_lon: float,
+        max_candidates: int = 3,
+    ) -> list[ScoredCandidate]:
         """Apply probabilistic selection for variety while maintaining performance."""
         if len(scored_candidates) <= max_candidates:
             return scored_candidates
@@ -448,7 +484,8 @@ class CleanCandidateGenerator:
         if scores:
             score_threshold = max(self.min_score_threshold, min(scores))
             qualified_candidates = [
-                candidate for candidate in scored_candidates
+                candidate
+                for candidate in scored_candidates
                 if candidate.overall_score >= score_threshold
             ]
         else:
@@ -485,21 +522,28 @@ class CleanCandidateGenerator:
         while len(selected) < max_candidates and available_candidates:
             # Weighted random selection
             if sum(available_weights) > 0:
-                idx = np.random.choice(len(available_candidates), p=np.array(available_weights)/sum(available_weights))
+                idx = np.random.choice(
+                    len(available_candidates),
+                    p=np.array(available_weights) / sum(available_weights),
+                )
             else:
                 idx = random.randint(0, len(available_candidates) - 1)
 
-            candidate_idx, candidate = available_candidates[idx]
+            _candidate_idx, candidate = available_candidates[idx]
 
             # Check angular separation from already selected candidates
             if not selected:
                 selected.append(candidate)
             else:
-                candidate_angle = self._calculate_bearing(from_lat, from_lon, candidate.lat, candidate.lon)
+                candidate_angle = self._calculate_bearing(
+                    from_lat, from_lon, candidate.lat, candidate.lon
+                )
 
                 too_close = False
                 for selected_candidate in selected:
-                    selected_angle = self._calculate_bearing(from_lat, from_lon, selected_candidate.lat, selected_candidate.lon)
+                    selected_angle = self._calculate_bearing(
+                        from_lat, from_lon, selected_candidate.lat, selected_candidate.lon
+                    )
                     angle_diff = abs(candidate_angle - selected_angle)
                     angle_diff = min(angle_diff, 360 - angle_diff)
 
@@ -515,15 +559,25 @@ class CleanCandidateGenerator:
             available_weights.pop(idx)
 
             # If we can't find enough diverse candidates, relax the angle constraint
-            if len(available_candidates) > 0 and len(selected) < max_candidates and len(available_candidates) < max_candidates - len(selected):
+            if (
+                len(available_candidates) > 0
+                and len(selected) < max_candidates
+                and len(available_candidates) < max_candidates - len(selected)
+            ):
                 min_angle_separation = max(20, min_angle_separation - 10)
 
-        logger.debug(f"Probabilistic selection: {len(selected)} candidates from {len(qualified_candidates)} qualified")
+        logger.debug(
+            f"Probabilistic selection: {len(selected)} candidates from {len(qualified_candidates)} qualified"
+        )
         return selected
 
-    def _apply_geometric_diversity(self, scored_candidates: list[ScoredCandidate],
-                                 from_lat: float, from_lon: float,
-                                 max_candidates: int = 3) -> list[ScoredCandidate]:
+    def _apply_geometric_diversity(
+        self,
+        scored_candidates: list[ScoredCandidate],
+        from_lat: float,
+        from_lon: float,
+        max_candidates: int = 3,
+    ) -> list[ScoredCandidate]:
         """Apply geometric diversity to avoid clustering candidates."""
         if len(scored_candidates) <= max_candidates:
             return scored_candidates
@@ -571,8 +625,9 @@ class CleanCandidateGenerator:
         dlon_rad = math.radians(lon2 - lon1)
 
         y = math.sin(dlon_rad) * math.cos(lat2_rad)
-        x = (math.cos(lat1_rad) * math.sin(lat2_rad) -
-             math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(dlon_rad))
+        x = math.cos(lat1_rad) * math.sin(lat2_rad) - math.sin(lat1_rad) * math.cos(
+            lat2_rad
+        ) * math.cos(dlon_rad)
 
         bearing_rad = math.atan2(y, x)
         bearing_deg = math.degrees(bearing_rad)
@@ -581,19 +636,19 @@ class CleanCandidateGenerator:
 
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance between two points in meters."""
-        R = 6371000  # Earth's radius in meters
+        earth_radius_m = 6371000  # Earth's radius in meters
 
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
         dlat_rad = math.radians(lat2 - lat1)
         dlon_rad = math.radians(lon2 - lon1)
 
-        a = (math.sin(dlat_rad/2) * math.sin(dlat_rad/2) +
-             math.cos(lat1_rad) * math.cos(lat2_rad) *
-             math.sin(dlon_rad/2) * math.sin(dlon_rad/2))
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        a = math.sin(dlat_rad / 2) * math.sin(dlat_rad / 2) + math.cos(lat1_rad) * math.cos(
+            lat2_rad
+        ) * math.sin(dlon_rad / 2) * math.sin(dlon_rad / 2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        return R * c
+        return earth_radius_m * c
 
     def get_scored_nodes_for_visualization(self, score_type: str = "overall") -> dict[str, Any]:
         """
@@ -607,10 +662,10 @@ class CleanCandidateGenerator:
         """
         if not self.scored_nodes:
             return {
-                'nodes': [],
-                'score_range': {'min': 0, 'max': 1},
-                'total_nodes': 0,
-                'score_type': score_type
+                "nodes": [],
+                "score_range": {"min": 0, "max": 1},
+                "total_nodes": 0,
+                "score_type": score_type,
             }
 
         visualization_nodes = []
@@ -632,39 +687,40 @@ class CleanCandidateGenerator:
                     continue  # Skip nodes without this feature score
                 score = feature_score
 
-            visualization_nodes.append({
-                'node_id': node_id,
-                'lat': scored_candidate.lat,
-                'lon': scored_candidate.lon,
-                'score': score,
-                'overall_score': scored_candidate.overall_score,
-                'explanation': scored_candidate.explanation,
-                'feature_scores': {ft.value: fs for ft, fs in scored_candidate.feature_scores.items()}
-            })
+            visualization_nodes.append(
+                {
+                    "node_id": node_id,
+                    "lat": scored_candidate.lat,
+                    "lon": scored_candidate.lon,
+                    "score": score,
+                    "overall_score": scored_candidate.overall_score,
+                    "explanation": scored_candidate.explanation,
+                    "feature_scores": {
+                        ft.value: fs for ft, fs in scored_candidate.feature_scores.items()
+                    },
+                }
+            )
             scores.append(score)
 
         # Calculate score range for color mapping
-        if scores:
-            score_range = {'min': min(scores), 'max': max(scores)}
-        else:
-            score_range = {'min': 0, 'max': 1}
+        score_range = {"min": min(scores), "max": max(scores)} if scores else {"min": 0, "max": 1}
 
         return {
-            'nodes': visualization_nodes,
-            'score_range': score_range,
-            'total_nodes': len(visualization_nodes),
-            'score_type': score_type,
-            'available_score_types': self._get_available_score_types()
+            "nodes": visualization_nodes,
+            "score_range": score_range,
+            "total_nodes": len(visualization_nodes),
+            "score_type": score_type,
+            "available_score_types": self._get_available_score_types(),
         }
 
     def _get_available_score_types(self) -> list[str]:
         """Get list of available score types for visualization."""
-        available_types = ['overall']
+        available_types = ["overall"]
 
         if self.scored_nodes:
             # Get feature types from first scored node
             first_node = next(iter(self.scored_nodes.values()))
-            for feature_type in first_node.feature_scores.keys():
+            for feature_type in first_node.feature_scores:
                 available_types.append(feature_type.value)
 
         return available_types
@@ -672,32 +728,39 @@ class CleanCandidateGenerator:
     def _calculate_search_area(self, target_distance: float) -> float:
         """Calculate search area in km²."""
         max_radius = target_distance * 1.5
-        area_m2 = math.pi * (max_radius ** 2)
+        area_m2 = math.pi * (max_radius**2)
         return area_m2 / 1_000_000  # Convert to km²
 
     def get_statistics(self) -> dict[str, Any]:
         """Get comprehensive statistics about the generator."""
         if not self.is_initialized:
-            return {'error': 'Generator not initialized'}
+            return {"error": "Generator not initialized"}
 
-        return {
-            'initialization': {
-                'is_initialized': self.is_initialized,
-                'graph_nodes': len(self.graph.nodes),
-                'graph_edges': len(self.graph.edges)
+        stats: dict[str, Any] = {
+            "initialization": {
+                "is_initialized": self.is_initialized,
+                "graph_nodes": len(self.graph.nodes),
+                "graph_edges": len(self.graph.edges),
             },
-            'spatial_grid': self.spatial_grid.get_statistics(),
-            'feature_database': self.feature_database.get_statistics(),
-            'performance_targets': {
-                'target_generation_time_ms': self.target_generation_time_ms,
-                'max_candidates_to_score': self.max_candidates_to_score,
-                'min_distance_between_candidates': self.min_distance_between_candidates
-            }
+            "performance_targets": {
+                "target_generation_time_ms": self.target_generation_time_ms,
+                "max_candidates_to_score": self.max_candidates_to_score,
+                "min_distance_between_candidates": self.min_distance_between_candidates,
+            },
         }
+
+        if self.spatial_grid:
+            stats["spatial_grid"] = self.spatial_grid.get_statistics()
+        if self.feature_database:
+            stats["feature_database"] = self.feature_database.get_statistics()
+
+        return stats
 
     def clear_cache(self):
         """Clear all cached data."""
-        self.spatial_grid.clear()
-        self.feature_database.clear()
+        if self.spatial_grid:
+            self.spatial_grid.clear()
+        if self.feature_database:
+            self.feature_database.clear()
         self.is_initialized = False
         logger.info("Cleared clean candidate generator cache")

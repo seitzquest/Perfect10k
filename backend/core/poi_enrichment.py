@@ -32,20 +32,27 @@ class POIEnricher:
         # Define OSM tags for different semantic categories
         poi_tags = {
             # Water features
-            'natural': ['water', 'lake', 'pond', 'spring', 'wood', 'forest', 'grassland', 'heath', 'scrub'],
-            'waterway': ['river', 'stream', 'canal'],
-            'amenity': ['fountain', 'restaurant', 'cafe', 'bar', 'shop', 'market'],
-
+            "natural": [
+                "water",
+                "lake",
+                "pond",
+                "spring",
+                "wood",
+                "forest",
+                "grassland",
+                "heath",
+                "scrub",
+            ],
+            "waterway": ["river", "stream", "canal"],
+            "amenity": ["fountain", "restaurant", "cafe", "bar", "shop", "market"],
             # Nature and parks
-            'leisure': ['park', 'garden', 'nature_reserve', 'recreation_ground'],
-            'landuse': ['forest', 'grass', 'recreation_ground'],
-
+            "leisure": ["park", "garden", "nature_reserve", "recreation_ground"],
+            "landuse": ["forest", "grass", "recreation_ground"],
             # Scenic and historic
-            'tourism': ['viewpoint', 'attraction', 'museum', 'monument'],
-            'historic': ['monument', 'memorial', 'castle', 'ruins'],
-
+            "tourism": ["viewpoint", "attraction", "museum", "monument"],
+            "historic": ["monument", "memorial", "castle", "ruins"],
             # Urban amenities
-            'shop': True,  # All shop types
+            "shop": True,  # All shop types
         }
 
         self.pois = []
@@ -54,12 +61,10 @@ class POIEnricher:
             # Fetch POIs by category
             for main_tag, values in poi_tags.items():
                 try:
-                    if values is True:
-                        # Fetch all values for this tag
-                        tags = {main_tag: True}
-                    else:
-                        # Fetch specific values
-                        tags = {main_tag: values}
+                    # Fetch all values for this tag if True, else specific values
+                    tags: dict[str, bool | str | list[str]] = (
+                        {main_tag: True} if values is True else {main_tag: values}
+                    )
 
                     gdf = ox.features_from_point((lat, lon), dist=radius, tags=tags)
 
@@ -83,11 +88,11 @@ class POIEnricher:
             logger.warning(f"Failed to fetch POIs: {e}")
             self.pois = []
 
-    def _extract_poi_info(self, row, main_tag: str) -> dict:
+    def _extract_poi_info(self, row, main_tag: str) -> dict | None:
         """Extract POI information from OSM data."""
         try:
             # Get centroid for point/polygon geometries
-            if hasattr(row.geometry, 'centroid'):
+            if hasattr(row.geometry, "centroid"):
                 centroid = row.geometry.centroid
                 lat, lon = centroid.y, centroid.x
             else:
@@ -95,74 +100,78 @@ class POIEnricher:
 
             # Extract semantic features
             poi = {
-                'lat': lat,
-                'lon': lon,
-                'features': [],
-                'name': row.get('name', ''),
-                'main_tag': main_tag
+                "lat": lat,
+                "lon": lon,
+                "features": [],
+                "name": row.get("name", ""),
+                "main_tag": main_tag,
             }
 
             # Categorize based on tags
-            if main_tag == 'natural':
-                if row.get('natural') in ['water', 'lake', 'pond']:
-                    poi['features'].extend(['water', 'lake' if row.get('natural') == 'lake' else 'water'])
-                elif row.get('natural') in ['wood', 'forest']:
-                    poi['features'].extend(['forest', 'nature'])
-                elif row.get('natural') in ['grassland', 'heath', 'scrub']:
-                    poi['features'].extend(['nature', 'green'])
+            if main_tag == "natural":
+                if row.get("natural") in ["water", "lake", "pond"]:
+                    poi["features"].extend(
+                        ["water", "lake" if row.get("natural") == "lake" else "water"]
+                    )
+                elif row.get("natural") in ["wood", "forest"]:
+                    poi["features"].extend(["forest", "nature"])
+                elif row.get("natural") in ["grassland", "heath", "scrub"]:
+                    poi["features"].extend(["nature", "green"])
 
-            elif main_tag == 'waterway':
-                water_type = row.get('waterway', 'water')
-                poi['features'].extend(['water', water_type])
+            elif main_tag == "waterway":
+                water_type = row.get("waterway", "water")
+                poi["features"].extend(["water", water_type])
 
-            elif main_tag == 'leisure':
-                leisure_type = row.get('leisure', 'park')
-                if leisure_type in ['park', 'garden']:
-                    poi['features'].extend(['park', 'nature', 'green'])
-                elif leisure_type == 'nature_reserve':
-                    poi['features'].extend(['nature', 'forest'])
+            elif main_tag == "leisure":
+                leisure_type = row.get("leisure", "park")
+                if leisure_type in ["park", "garden"]:
+                    poi["features"].extend(["park", "nature", "green"])
+                elif leisure_type == "nature_reserve":
+                    poi["features"].extend(["nature", "forest"])
 
-            elif main_tag == 'landuse':
-                if row.get('landuse') == 'forest':
-                    poi['features'].extend(['forest', 'nature'])
-                elif row.get('landuse') in ['grass', 'recreation_ground']:
-                    poi['features'].extend(['park', 'green'])
+            elif main_tag == "landuse":
+                if row.get("landuse") == "forest":
+                    poi["features"].extend(["forest", "nature"])
+                elif row.get("landuse") in ["grass", "recreation_ground"]:
+                    poi["features"].extend(["park", "green"])
 
-            elif main_tag == 'tourism':
-                tourism_type = row.get('tourism', 'attraction')
-                if tourism_type == 'viewpoint':
-                    poi['features'].extend(['viewpoint', 'scenic'])
-                elif tourism_type in ['attraction', 'monument']:
-                    poi['features'].extend(['scenic', 'monument'])
-                elif tourism_type == 'museum':
-                    poi['features'].extend(['historic', 'cultural'])
+            elif main_tag == "tourism":
+                tourism_type = row.get("tourism", "attraction")
+                if tourism_type == "viewpoint":
+                    poi["features"].extend(["viewpoint", "scenic"])
+                elif tourism_type in ["attraction", "monument"]:
+                    poi["features"].extend(["scenic", "monument"])
+                elif tourism_type == "museum":
+                    poi["features"].extend(["historic", "cultural"])
 
-            elif main_tag == 'historic':
-                poi['features'].extend(['historic', 'monument'])
+            elif main_tag == "historic":
+                poi["features"].extend(["historic", "monument"])
 
-            elif main_tag == 'amenity':
-                amenity_type = row.get('amenity', 'amenity')
-                if amenity_type in ['restaurant', 'cafe', 'bar']:
-                    poi['features'].extend(['cafe', 'restaurant', 'urban'])
-                elif amenity_type == 'fountain':
-                    poi['features'].extend(['water', 'fountain'])
-                elif amenity_type in ['shop', 'market']:
-                    poi['features'].extend(['shop', 'urban'])
+            elif main_tag == "amenity":
+                amenity_type = row.get("amenity", "amenity")
+                if amenity_type in ["restaurant", "cafe", "bar"]:
+                    poi["features"].extend(["cafe", "restaurant", "urban"])
+                elif amenity_type == "fountain":
+                    poi["features"].extend(["water", "fountain"])
+                elif amenity_type in ["shop", "market"]:
+                    poi["features"].extend(["shop", "urban"])
 
-            elif main_tag == 'shop':
-                poi['features'].extend(['shop', 'urban'])
+            elif main_tag == "shop":
+                poi["features"].extend(["shop", "urban"])
 
             # Add name-based features
-            if poi['name'] and isinstance(poi['name'], str):
-                name_lower = poi['name'].lower()
-                if any(keyword in name_lower for keyword in ['park', 'garden']):
-                    poi['features'].extend(['park', 'nature'])
-                if any(keyword in name_lower for keyword in ['lake', 'pond', 'river']):
-                    poi['features'].extend(['water'])
-                if any(keyword in name_lower for keyword in ['view', 'overlook', 'scenic']):
-                    poi['features'].extend(['scenic', 'viewpoint'])
+            if poi["name"] and isinstance(poi["name"], str):
+                name_lower = poi["name"].lower()
+                if any(keyword in name_lower for keyword in ["park", "garden"]):
+                    poi["features"].extend(["park", "nature"])
+                if any(keyword in name_lower for keyword in ["lake", "pond", "river"]):
+                    poi["features"].extend(["water"])
+                if any(keyword in name_lower for keyword in ["view", "overlook", "scenic"]):
+                    poi["features"].extend(["scenic", "viewpoint"])
 
-            return poi if poi['features'] else None
+            if poi["features"]:
+                return poi
+            return None
 
         except Exception as e:
             logger.debug(f"Failed to extract POI info: {e}")
@@ -173,8 +182,8 @@ class POIEnricher:
         self.spatial_index = {}
 
         for idx, poi in enumerate(self.pois):
-            grid_x = int(poi['lat'] / self.grid_size)
-            grid_y = int(poi['lon'] / self.grid_size)
+            grid_x = int(poi["lat"] / self.grid_size)
+            grid_y = int(poi["lon"] / self.grid_size)
 
             if (grid_x, grid_y) not in self.spatial_index:
                 self.spatial_index[(grid_x, grid_y)] = []
@@ -209,9 +218,9 @@ class POIEnricher:
                         poi = self.pois[poi_idx]
 
                         # Check actual distance
-                        distance = self._haversine_distance(lat, lon, poi['lat'], poi['lon'])
+                        distance = self._haversine_distance(lat, lon, poi["lat"], poi["lon"])
                         if distance <= radius_meters:
-                            features.extend(poi['features'])
+                            features.extend(poi["features"])
 
         # Remove duplicates while preserving order
         unique_features = []
@@ -223,33 +232,33 @@ class POIEnricher:
 
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance in meters."""
-        R = 6371000  # Earth radius in meters
+        earth_radius_m = 6371000  # Earth radius in meters
 
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
         delta_lat = math.radians(lat2 - lat1)
         delta_lon = math.radians(lon2 - lon1)
 
-        a = (math.sin(delta_lat/2) * math.sin(delta_lat/2) +
-             math.cos(lat1_rad) * math.cos(lat2_rad) *
-             math.sin(delta_lon/2) * math.sin(delta_lon/2))
+        a = math.sin(delta_lat / 2) * math.sin(delta_lat / 2) + math.cos(lat1_rad) * math.cos(
+            lat2_rad
+        ) * math.sin(delta_lon / 2) * math.sin(delta_lon / 2)
 
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        return R * c
+        return earth_radius_m * c
 
     def get_stats(self) -> dict:
         """Get statistics about loaded POIs."""
         if not self.pois:
-            return {'total_pois': 0, 'features': {}}
+            return {"total_pois": 0, "features": {}}
 
         feature_counts = {}
         for poi in self.pois:
-            for feature in poi['features']:
+            for feature in poi["features"]:
                 feature_counts[feature] = feature_counts.get(feature, 0) + 1
 
         return {
-            'total_pois': len(self.pois),
-            'features': feature_counts,
-            'spatial_index_cells': len(self.spatial_index)
+            "total_pois": len(self.pois),
+            "features": feature_counts,
+            "spatial_index_cells": len(self.spatial_index),
         }

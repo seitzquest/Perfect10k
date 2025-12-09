@@ -21,41 +21,39 @@ import requests
 
 # Predefined city coordinates
 CITIES = {
-    'munich': (48.1351, 11.5820),
-    'berlin': (52.5200, 13.4050),
-    'hamburg': (53.5511, 9.9937),
-    'frankfurt': (50.1109, 8.6821),
-    'cologne': (50.9375, 6.9603),
-    'stuttgart': (48.7758, 9.1829),
-    'dusseldorf': (51.2277, 6.7735),
-    'leipzig': (51.3397, 12.3731),
-    'dortmund': (51.5136, 7.4653),
-    'nuremberg': (49.4521, 11.0767),
+    "munich": (48.1351, 11.5820),
+    "berlin": (52.5200, 13.4050),
+    "hamburg": (53.5511, 9.9937),
+    "frankfurt": (50.1109, 8.6821),
+    "cologne": (50.9375, 6.9603),
+    "stuttgart": (48.7758, 9.1829),
+    "dusseldorf": (51.2277, 6.7735),
+    "leipzig": (51.3397, 12.3731),
+    "dortmund": (51.5136, 7.4653),
+    "nuremberg": (49.4521, 11.0767),
 }
+
 
 def call_warm_api(locations, city_names=None, base_url="http://localhost:8000"):
     """Call the warm-cache API endpoint."""
     try:
         response = requests.post(
             f"{base_url}/api/warm-cache",
-            json={
-                "locations": locations,
-                "city_names": city_names
-            },
-            timeout=300  # 5 minute timeout
+            json={"locations": locations, "city_names": city_names},
+            timeout=300,  # 5 minute timeout
         )
 
         if response.status_code == 200:
             return True, response.json()
-        else:
-            return False, f"HTTP {response.status_code}: {response.text}"
+        return False, f"HTTP {response.status_code}: {response.text}"
 
     except requests.exceptions.Timeout:
         return False, "Request timed out after 5 minutes"
     except requests.exceptions.ConnectionError:
         return False, "Could not connect to backend. Is the server running?"
     except Exception as e:
-        return False, f"Request failed: {str(e)}"
+        return False, f"Request failed: {e!s}"
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -70,18 +68,21 @@ Examples:
   %(prog)s --cities                  # List available cities
   %(prog)s --url http://server:8000  # Use different server URL
 
-Available cities: {', '.join(CITIES.keys())}
-        """
+Available cities: {", ".join(CITIES.keys())}
+        """,
     )
 
-    parser.add_argument('--url', default='http://localhost:8000',
-                       help='Backend server URL (default: http://localhost:8000)')
-    parser.add_argument('coordinates', nargs='*', help='Latitude and longitude pairs')
+    parser.add_argument(
+        "--url",
+        default="http://localhost:8000",
+        help="Backend server URL (default: http://localhost:8000)",
+    )
+    parser.add_argument("coordinates", nargs="*", help="Latitude and longitude pairs")
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--city', nargs='+', choices=CITIES.keys(), help='City names to warm')
-    group.add_argument('--all-cities', action='store_true', help='Warm all predefined cities')
-    group.add_argument('--cities', action='store_true', help='List available cities')
+    group.add_argument("--city", nargs="+", choices=CITIES.keys(), help="City names to warm")
+    group.add_argument("--all-cities", action="store_true", help="Warm all predefined cities")
+    group.add_argument("--cities", action="store_true", help="List available cities")
 
     args = parser.parse_args()
 
@@ -116,7 +117,9 @@ Available cities: {', '.join(CITIES.keys())}
                 locations.append([lat, lon])
                 city_names.append(None)
             except ValueError:
-                print(f"❌ Error: Invalid coordinates: {args.coordinates[i]} {args.coordinates[i + 1]}")
+                print(
+                    f"❌ Error: Invalid coordinates: {args.coordinates[i]} {args.coordinates[i + 1]}"
+                )
                 return 1
 
     if not locations:
@@ -134,38 +137,43 @@ Available cities: {', '.join(CITIES.keys())}
 
     elapsed = time.time() - start_time
 
-    if success:
+    if success and isinstance(result, dict):
         print(f"✅ API call completed in {elapsed:.1f}s")
-        print(f"📊 {result['message']}")
-        print(f"🔄 Total jobs started: {result['total_jobs_started']}")
-        print(f"📍 Successful locations: {result['successful_locations']}/{result['locations_processed']}")
+        print(f"📊 {result.get('message', 'Unknown status')}")
+        print(f"🔄 Total jobs started: {result.get('total_jobs_started', 0)}")
+        print(
+            f"📍 Successful locations: {result.get('successful_locations', 0)}/{result.get('locations_processed', 0)}"
+        )
 
-        if result.get('note'):
-            print(f"ℹ️  {result['note']}")
+        if result.get("note"):
+            print(f"Info: {result['note']}")
 
         # Show individual results
         print("\nDetailed Results:")
-        for res in result['results']:
-            location = res['location']
-            city_name = res.get('city_name') or f"({location['lat']:.4f}, {location['lon']:.4f})"
+        for res in result.get("results", []):
+            location = res.get("location", {})
+            city_name = (
+                res.get("city_name")
+                or f"({location.get('lat', 0):.4f}, {location.get('lon', 0):.4f})"
+            )
             status_emoji = {
-                'started': '🔄',
-                'already_cached': '✅',
-                'loaded': '✅',
-                'error': '❌'
-            }.get(res['status'], '?')
+                "started": "🔄",
+                "already_cached": "✅",
+                "loaded": "✅",
+                "error": "❌",
+            }.get(res.get("status", "unknown"), "?")
 
-            print(f"  {status_emoji} {city_name:15} - {res['message']}")
+            print(f"  {status_emoji} {city_name:15} - {res.get('message', 'Unknown')}")
 
-        if result['successful_locations'] == len(locations):
+        successful = result.get("successful_locations", 0)
+        if successful == len(locations):
             print("\n🎉 All cache warming operations completed successfully!")
             return 0
-        else:
-            print(f"\n⚠️  {len(locations) - result['successful_locations']} locations failed")
-            return 0
-    else:
-        print(f"❌ API call failed after {elapsed:.1f}s: {result}")
-        return 1
+        print(f"\n⚠️  {len(locations) - successful} locations failed")
+        return 0
+    print(f"❌ API call failed after {elapsed:.1f}s: {result}")
+    return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

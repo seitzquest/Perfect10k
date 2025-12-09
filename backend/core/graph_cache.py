@@ -19,7 +19,12 @@ class GraphCacheEntry:
     """Represents a cached graph with metadata."""
 
     def __init__(
-        self, graph: nx.MultiGraph, center: tuple[float, float], radius: float, cache_key: str, semantic_grid: SemanticGrid = None
+        self,
+        graph: nx.MultiGraph,
+        center: tuple[float, float],
+        radius: float,
+        cache_key: str,
+        semantic_grid: SemanticGrid | None = None,
     ):
         self.graph = graph
         self.center = center  # (lat, lon)
@@ -97,7 +102,13 @@ class PersistentGraphCache:
 
         return None
 
-    def store_graph(self, graph: nx.MultiGraph, center: tuple[float, float], radius: float, semantic_matcher=None) -> str:
+    def store_graph(
+        self,
+        graph: nx.MultiGraph,
+        center: tuple[float, float],
+        radius: float,
+        semantic_matcher=None,
+    ) -> str:
         """
         Store a graph in the persistent cache with pre-computed semantic grid.
         Returns the cache key for the stored graph.
@@ -127,8 +138,8 @@ class PersistentGraphCache:
             "created_at": time.time(),
             "last_accessed": time.time(),
             "access_count": 1,
-            "node_count": len(graph.nodes()),
-            "edge_count": len(graph.edges()),
+            "node_count": len(list(graph.nodes())),
+            "edge_count": len(list(graph.edges())),
             "file_size": self._get_file_size(cache_key),
             "has_semantic_grid": semantic_grid is not None,
             "grid_cells": len(semantic_grid.grid) if semantic_grid else 0,
@@ -139,7 +150,9 @@ class PersistentGraphCache:
         # Cleanup old entries if cache is too large
         self._cleanup_cache_if_needed()
 
-        logger.info(f"Stored graph {cache_key} with {len(graph.nodes())} nodes and semantic grid")
+        logger.info(
+            f"Stored graph {cache_key} with {len(list(graph.nodes()))} nodes and semantic grid"
+        )
         return cache_key
 
     def get_cache_stats(self) -> dict:
@@ -252,7 +265,12 @@ class PersistentGraphCache:
             return None
 
     def _save_graph_to_disk(
-        self, graph: nx.MultiGraph, cache_key: str, center: tuple[float, float], radius: float, semantic_grid: SemanticGrid = None
+        self,
+        graph: nx.MultiGraph,
+        cache_key: str,
+        center: tuple[float, float],
+        radius: float,
+        semantic_grid: SemanticGrid | None = None,
     ):
         """Save a graph and semantic grid to disk."""
         try:
@@ -294,7 +312,7 @@ class PersistentGraphCache:
 
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance in meters."""
-        R = 6371000  # Earth radius in meters
+        earth_radius_m = 6371000  # Earth radius in meters
 
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
@@ -307,7 +325,7 @@ class PersistentGraphCache:
 
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        return R * c
+        return earth_radius_m * c
 
     def _load_cache_index(self):
         """Load the cache index from disk."""

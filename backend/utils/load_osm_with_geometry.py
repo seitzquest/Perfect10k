@@ -48,10 +48,10 @@ def load_osm_area_with_geometry(lat: float, lon: float, radius: int = 8000) -> n
         graph = ox.graph_from_point(
             (lat, lon),
             dist=radius,
-            network_type='walk',
+            network_type="walk",
             retain_all=True,  # Keep all nodes and edges
             truncate_by_edge=True,  # More accurate boundary handling
-            simplify=False  # Keep all intermediate nodes for better geometry
+            simplify=False,  # Keep all intermediate nodes for better geometry
         )
 
         logger.info(f"Loaded graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
@@ -62,13 +62,17 @@ def load_osm_area_with_geometry(lat: float, lon: float, radius: int = 8000) -> n
 
         for _u, _v, data in graph.edges(data=True):
             total_edges += 1
-            if 'geometry' in data and data['geometry'] is not None:
+            if "geometry" in data and data["geometry"] is not None:
                 geometry_count += 1
 
-        logger.info(f"Geometry data: {geometry_count}/{total_edges} edges ({geometry_count/total_edges*100:.1f}%)")
+        logger.info(
+            f"Geometry data: {geometry_count}/{total_edges} edges ({geometry_count / total_edges * 100:.1f}%)"
+        )
 
         if geometry_count == 0:
-            logger.warning("No geometry data found in loaded graph! This will result in straight-line route visualization.")
+            logger.warning(
+                "No geometry data found in loaded graph! This will result in straight-line route visualization."
+            )
 
         return graph
 
@@ -77,7 +81,9 @@ def load_osm_area_with_geometry(lat: float, lon: float, radius: int = 8000) -> n
         raise
 
 
-def load_osm_bbox_with_geometry(north: float, south: float, east: float, west: float) -> nx.MultiGraph:
+def load_osm_bbox_with_geometry(
+    north: float, south: float, east: float, west: float
+) -> nx.MultiGraph:
     """
     Load OSM data for a bounding box with full geometry preservation.
 
@@ -94,12 +100,15 @@ def load_osm_bbox_with_geometry(north: float, south: float, east: float, west: f
 
     try:
         # Load graph with parameters to preserve geometry
-        graph = ox.graph_from_bbox(
-            north, south, east, west,
-            network_type='walk',
+        graph = ox.graph_from_bbox(  # pyright: ignore[reportCallIssue]
+            north,
+            south,
+            east,
+            west,
+            network_type="walk",
             retain_all=True,
             truncate_by_edge=True,
-            simplify=False
+            simplify=False,
         )
 
         logger.info(f"Loaded graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
@@ -129,7 +138,7 @@ def update_tile_cache_with_geometry(lat: float, lon: float, radius: int = 8000):
     tile_storage = SpatialTileStorage()
 
     # Store the graph (this will create tiles with geometry)
-    stored_tiles = tile_storage.store_graph(graph, set())  # Empty semantic features for now
+    stored_tiles = tile_storage.store_graph(graph, set())  # type: ignore[attr-defined]
 
     logger.info(f"Updated {len(stored_tiles)} tiles with geometry data")
     return stored_tiles
@@ -149,17 +158,18 @@ def verify_tile_geometry(geohash: str) -> bool:
 
     try:
         # Load the tile
-        tile_path = tile_storage.cache_dir / f"tile_{geohash}.pickle"
+        tile_path = tile_storage.cache_dir / f"tile_{geohash}.pickle"  # type: ignore[attr-defined]
         if not tile_path.exists():
             logger.error(f"Tile {geohash} does not exist")
             return False
 
         # Load and check the graph
         import pickle
-        with open(tile_path, 'rb') as f:
+
+        with open(tile_path, "rb") as f:
             tile_data = pickle.load(f)
 
-        graph = tile_data['graph']
+        graph = tile_data["graph"]
 
         # Check for geometry in edges
         geometry_count = 0
@@ -167,10 +177,12 @@ def verify_tile_geometry(geohash: str) -> bool:
 
         for _u, _v, data in graph.edges(data=True):
             total_edges += 1
-            if 'geometry' in data and data['geometry'] is not None:
+            if "geometry" in data and data["geometry"] is not None:
                 geometry_count += 1
 
-        logger.info(f"Tile {geohash}: {geometry_count}/{total_edges} edges have geometry ({geometry_count/total_edges*100:.1f}%)")
+        logger.info(
+            f"Tile {geohash}: {geometry_count}/{total_edges} edges have geometry ({geometry_count / total_edges * 100:.1f}%)"
+        )
         return geometry_count > 0
 
     except Exception as e:
@@ -181,11 +193,15 @@ def verify_tile_geometry(geohash: str) -> bool:
 def main():
     """Command line interface for OSM loading with geometry."""
     parser = argparse.ArgumentParser(description="Load OSM data with geometry preservation")
-    parser.add_argument('--lat', type=float, required=True, help="Latitude")
-    parser.add_argument('--lon', type=float, required=True, help="Longitude")
-    parser.add_argument('--radius', type=int, default=8000, help="Radius in meters (default: 8000)")
-    parser.add_argument('--update-cache', action='store_true', help="Update tile cache with loaded data")
-    parser.add_argument('--verify-tile', type=str, help="Verify geometry in specific tile (geohash)")
+    parser.add_argument("--lat", type=float, required=True, help="Latitude")
+    parser.add_argument("--lon", type=float, required=True, help="Longitude")
+    parser.add_argument("--radius", type=int, default=8000, help="Radius in meters (default: 8000)")
+    parser.add_argument(
+        "--update-cache", action="store_true", help="Update tile cache with loaded data"
+    )
+    parser.add_argument(
+        "--verify-tile", type=str, help="Verify geometry in specific tile (geohash)"
+    )
 
     args = parser.parse_args()
 

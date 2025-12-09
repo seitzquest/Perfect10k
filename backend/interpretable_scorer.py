@@ -5,12 +5,14 @@ Scores candidates using discrete features with clear explanations.
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import ClassVar
 
 from feature_database import CellFeatures, FeatureType
 
 
 class PreferenceCategory(Enum):
     """Categories of user preferences."""
+
     NATURE = "nature"
     WATER = "water"
     PARKS = "parks"
@@ -23,6 +25,7 @@ class PreferenceCategory(Enum):
 @dataclass
 class ScoredCandidate:
     """A candidate location with its score and explanation."""
+
     node_id: int
     lat: float
     lon: float
@@ -35,6 +38,7 @@ class ScoredCandidate:
 @dataclass
 class PreferenceWeights:
     """Weights for different features based on user preferences."""
+
     close_to_forest: float = 0.0
     close_to_water: float = 0.0
     close_to_park: float = 0.0
@@ -52,28 +56,62 @@ class InterpretableScorer:
     """
 
     # Keywords that indicate different preference categories
-    PREFERENCE_KEYWORDS = {
+    PREFERENCE_KEYWORDS: ClassVar[dict[PreferenceCategory, list[str]]] = {
         PreferenceCategory.NATURE: [
-            "nature", "forest", "tree", "green", "woods", "natural", "wildlife"
+            "nature",
+            "forest",
+            "tree",
+            "green",
+            "woods",
+            "natural",
+            "wildlife",
         ],
         PreferenceCategory.WATER: [
-            "water", "river", "lake", "stream", "pond", "canal", "waterfront", "creek"
+            "water",
+            "river",
+            "lake",
+            "stream",
+            "pond",
+            "canal",
+            "waterfront",
+            "creek",
         ],
-        PreferenceCategory.PARKS: [
-            "park", "garden", "playground", "recreation", "open space"
-        ],
+        PreferenceCategory.PARKS: ["park", "garden", "playground", "recreation", "open space"],
         PreferenceCategory.QUIET: [
-            "quiet", "peaceful", "calm", "serene", "tranquil", "residential"
+            "quiet",
+            "peaceful",
+            "calm",
+            "serene",
+            "tranquil",
+            "residential",
         ],
         PreferenceCategory.SCENIC: [
-            "scenic", "beautiful", "view", "vista", "overlook", "landscape", "picturesque"
+            "scenic",
+            "beautiful",
+            "view",
+            "vista",
+            "overlook",
+            "landscape",
+            "picturesque",
         ],
         PreferenceCategory.EXERCISE: [
-            "exercise", "fitness", "running", "jogging", "workout", "training", "hill", "steep"
+            "exercise",
+            "fitness",
+            "running",
+            "jogging",
+            "workout",
+            "training",
+            "hill",
+            "steep",
         ],
         PreferenceCategory.URBAN: [
-            "urban", "city", "downtown", "commercial", "shopping", "bustling"
-        ]
+            "urban",
+            "city",
+            "downtown",
+            "commercial",
+            "shopping",
+            "bustling",
+        ],
     }
 
     def __init__(self):
@@ -85,7 +123,7 @@ class InterpretableScorer:
             FeatureType.CLOSE_TO_PARK: 0.3,
             FeatureType.PATH_QUALITY: 0.6,
             FeatureType.INTERSECTION_DENSITY: 0.7,
-            FeatureType.ELEVATION_VARIETY: 0.4
+            FeatureType.ELEVATION_VARIETY: 0.4,
         }
 
         # Human-readable feature names
@@ -95,7 +133,7 @@ class InterpretableScorer:
             FeatureType.CLOSE_TO_PARK: "park access",
             FeatureType.PATH_QUALITY: "walking paths",
             FeatureType.INTERSECTION_DENSITY: "connectivity",
-            FeatureType.ELEVATION_VARIETY: "terrain variety"
+            FeatureType.ELEVATION_VARIETY: "terrain variety",
         }
 
     def analyze_preferences(self, preference_text: str) -> PreferenceWeights:
@@ -172,8 +210,14 @@ class InterpretableScorer:
 
         return weights
 
-    def score_candidate(self, node_id: int, lat: float, lon: float,
-                       features: CellFeatures, weights: PreferenceWeights) -> ScoredCandidate:
+    def score_candidate(
+        self,
+        node_id: int,
+        lat: float,
+        lon: float,
+        features: CellFeatures,
+        weights: PreferenceWeights,
+    ) -> ScoredCandidate:
         """
         Score a candidate location using discrete features.
 
@@ -193,28 +237,39 @@ class InterpretableScorer:
             FeatureType.CLOSE_TO_WATER: features.get_feature(FeatureType.CLOSE_TO_WATER),
             FeatureType.CLOSE_TO_PARK: features.get_feature(FeatureType.CLOSE_TO_PARK),
             FeatureType.PATH_QUALITY: features.get_feature(FeatureType.PATH_QUALITY),
-            FeatureType.INTERSECTION_DENSITY: features.get_feature(FeatureType.INTERSECTION_DENSITY),
-            FeatureType.ELEVATION_VARIETY: features.get_feature(FeatureType.ELEVATION_VARIETY)
+            FeatureType.INTERSECTION_DENSITY: features.get_feature(
+                FeatureType.INTERSECTION_DENSITY
+            ),
+            FeatureType.ELEVATION_VARIETY: features.get_feature(FeatureType.ELEVATION_VARIETY),
         }
 
         # Calculate weighted score
         weighted_scores = {
-            FeatureType.CLOSE_TO_FOREST: feature_scores[FeatureType.CLOSE_TO_FOREST] * weights.close_to_forest,
-            FeatureType.CLOSE_TO_WATER: feature_scores[FeatureType.CLOSE_TO_WATER] * weights.close_to_water,
-            FeatureType.CLOSE_TO_PARK: feature_scores[FeatureType.CLOSE_TO_PARK] * weights.close_to_park,
-            FeatureType.PATH_QUALITY: feature_scores[FeatureType.PATH_QUALITY] * weights.path_quality,
-            FeatureType.INTERSECTION_DENSITY: feature_scores[FeatureType.INTERSECTION_DENSITY] * weights.intersection_density,
-            FeatureType.ELEVATION_VARIETY: feature_scores[FeatureType.ELEVATION_VARIETY] * weights.elevation_variety
+            FeatureType.CLOSE_TO_FOREST: feature_scores[FeatureType.CLOSE_TO_FOREST]
+            * weights.close_to_forest,
+            FeatureType.CLOSE_TO_WATER: feature_scores[FeatureType.CLOSE_TO_WATER]
+            * weights.close_to_water,
+            FeatureType.CLOSE_TO_PARK: feature_scores[FeatureType.CLOSE_TO_PARK]
+            * weights.close_to_park,
+            FeatureType.PATH_QUALITY: feature_scores[FeatureType.PATH_QUALITY]
+            * weights.path_quality,
+            FeatureType.INTERSECTION_DENSITY: feature_scores[FeatureType.INTERSECTION_DENSITY]
+            * weights.intersection_density,
+            FeatureType.ELEVATION_VARIETY: feature_scores[FeatureType.ELEVATION_VARIETY]
+            * weights.elevation_variety,
         }
 
         # Calculate overall score (weighted average)
-        total_weight = (weights.close_to_forest + weights.close_to_water + weights.close_to_park +
-                       weights.path_quality + weights.intersection_density + weights.elevation_variety)
+        total_weight = (
+            weights.close_to_forest
+            + weights.close_to_water
+            + weights.close_to_park
+            + weights.path_quality
+            + weights.intersection_density
+            + weights.elevation_variety
+        )
 
-        if total_weight > 0:
-            overall_score = sum(weighted_scores.values()) / total_weight
-        else:
-            overall_score = 0.5  # Neutral score if no weights
+        overall_score = sum(weighted_scores.values()) / total_weight if total_weight > 0 else 0.5
 
         # Generate explanation and reasoning
         explanation, reasoning_details = self._generate_explanation(
@@ -228,12 +283,15 @@ class InterpretableScorer:
             overall_score=overall_score,
             feature_scores=feature_scores,
             explanation=explanation,
-            reasoning_details=reasoning_details
+            reasoning_details=reasoning_details,
         )
 
-    def score_multiple_candidates(self, candidates: list[tuple[int, float, float]],
-                                features_list: list[CellFeatures],
-                                preference_text: str) -> list[ScoredCandidate]:
+    def score_multiple_candidates(
+        self,
+        candidates: list[tuple[int, float, float]],
+        features_list: list[CellFeatures],
+        preference_text: str,
+    ) -> list[ScoredCandidate]:
         """
         Score multiple candidates at once.
 
@@ -258,9 +316,12 @@ class InterpretableScorer:
 
         return scored_candidates
 
-    def _generate_explanation(self, feature_scores: dict[FeatureType, float],
-                            weights: PreferenceWeights,
-                            weighted_scores: dict[FeatureType, float]) -> tuple[str, list[str]]:
+    def _generate_explanation(
+        self,
+        feature_scores: dict[FeatureType, float],
+        weights: PreferenceWeights,
+        weighted_scores: dict[FeatureType, float],
+    ) -> tuple[str, list[str]]:
         """Generate human-readable explanation for the score."""
 
         # Find the most important contributing features
@@ -300,11 +361,15 @@ class InterpretableScorer:
             explanation = f"Location with {important_features[0]} and {important_features[1]}"
         else:
             # Multiple features - list first two and indicate more
-            explanation = f"Location with {important_features[0]}, {important_features[1]}, and more"
+            explanation = (
+                f"Location with {important_features[0]}, {important_features[1]}, and more"
+            )
 
         return explanation, reasoning_details
 
-    def _get_weight_for_feature(self, weights: PreferenceWeights, feature_type: FeatureType) -> float:
+    def _get_weight_for_feature(
+        self, weights: PreferenceWeights, feature_type: FeatureType
+    ) -> float:
         """Get the weight for a specific feature type."""
         weight_map = {
             FeatureType.CLOSE_TO_FOREST: weights.close_to_forest,
@@ -312,7 +377,7 @@ class InterpretableScorer:
             FeatureType.CLOSE_TO_PARK: weights.close_to_park,
             FeatureType.PATH_QUALITY: weights.path_quality,
             FeatureType.INTERSECTION_DENSITY: weights.intersection_density,
-            FeatureType.ELEVATION_VARIETY: weights.elevation_variety
+            FeatureType.ELEVATION_VARIETY: weights.elevation_variety,
         }
         return weight_map.get(feature_type, 0.0)
 
@@ -335,10 +400,12 @@ class InterpretableScorer:
         for category, keywords in self.PREFERENCE_KEYWORDS.items():
             matched_keywords = [kw for kw in keywords if kw in preference_lower]
             if matched_keywords:
-                detected_categories.append({
-                    'category': category.value,
-                    'matched_keywords': matched_keywords[:3]  # Show first 3 matches
-                })
+                detected_categories.append(
+                    {
+                        "category": category.value,
+                        "matched_keywords": matched_keywords[:3],  # Show first 3 matches
+                    }
+                )
 
         # Explain feature weights
         feature_importance = []
@@ -346,22 +413,26 @@ class InterpretableScorer:
             weight = self._get_weight_for_feature(weights, feature_type)
             if weight > 0.1:
                 importance_level = "high" if weight > 0.6 else "medium" if weight > 0.3 else "low"
-                feature_importance.append({
-                    'feature': self.feature_names[feature_type],
-                    'weight': weight,
-                    'importance': importance_level
-                })
+                feature_importance.append(
+                    {
+                        "feature": self.feature_names[feature_type],
+                        "weight": weight,
+                        "importance": importance_level,
+                    }
+                )
 
         return {
-            'original_text': preference_text,
-            'detected_categories': detected_categories,
-            'feature_weights': {
-                'close_to_forest': weights.close_to_forest,
-                'close_to_water': weights.close_to_water,
-                'close_to_park': weights.close_to_park,
-                'path_quality': weights.path_quality,
-                'intersection_density': weights.intersection_density,
-                'elevation_variety': weights.elevation_variety
+            "original_text": preference_text,
+            "detected_categories": detected_categories,
+            "feature_weights": {
+                "close_to_forest": weights.close_to_forest,
+                "close_to_water": weights.close_to_water,
+                "close_to_park": weights.close_to_park,
+                "path_quality": weights.path_quality,
+                "intersection_density": weights.intersection_density,
+                "elevation_variety": weights.elevation_variety,
             },
-            'feature_importance': sorted(feature_importance, key=lambda x: x['weight'], reverse=True)
+            "feature_importance": sorted(
+                feature_importance, key=lambda x: x["weight"], reverse=True
+            ),
         }

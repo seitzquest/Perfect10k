@@ -8,7 +8,6 @@ import os
 import signal
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -60,8 +59,6 @@ class ProcessManager:
         print_colored("✅ All servers stopped", Colors.GREEN)
 
 
-
-
 def start_backend():
     """Start the backend server."""
     print_colored("🔧 Starting backend server...", Colors.BLUE)
@@ -81,10 +78,10 @@ def start_backend():
         process = subprocess.Popen(
             cmd,
             stdout=None,  # Don't capture stdout - let it print directly
-            stderr=None,  # Don't capture stderr - let it print directly  
+            stderr=None,  # Don't capture stderr - let it print directly
             universal_newlines=True,
-            bufsize=0,   # No buffering
-            env={**os.environ, 'PYTHONUNBUFFERED': '1'}  # Force Python unbuffered output
+            bufsize=0,  # No buffering
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},  # Force Python unbuffered output
         )
         print_colored("✅ Backend server starting on http://localhost:8000", Colors.GREEN)
         return process
@@ -108,8 +105,6 @@ def start_backend():
     except Exception as e:
         print_colored(f"❌ Failed to start backend: {e}", Colors.RED)
         return None
-
-
 
 
 def monitor_process(process, name, manager):

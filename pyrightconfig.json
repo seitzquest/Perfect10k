@@ -1,0 +1,62 @@
+{
+  // Pyright configuration
+  // See: https://microsoft.github.io/pyright/#/configuration
+
+  // Python version
+  "pythonVersion": "3.12",
+
+  // Type checking mode: "off", "basic", "standard", "strict"
+  "typeCheckingMode": "standard",
+
+  // Paths to include in type checking
+  "include": [
+    "src",
+    "."
+  ],
+
+  // Paths to exclude from type checking
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    ".git",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache"
+  ],
+
+  // Diagnostics settings
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "reportUnusedClass": "warning",
+  "reportUnusedFunction": "warning",
+  "reportUnusedVariable": "warning",
+  "reportDuplicateImport": "warning",
+  "reportOptionalSubscript": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportOptionalCall": "warning",
+  "reportOptionalIterable": "warning",
+  "reportOptionalContextManager": "warning",
+  "reportOptionalOperand": "warning",
+  "reportUntypedFunctionDecorator": "none",
+  "reportUntypedClassDecorator": "none",
+  "reportPrivateUsage": "warning",
+  "reportConstantRedefinition": "error",
+  "reportIncompatibleMethodOverride": "error",
+  "reportIncompatibleVariableOverride": "error",
+  "reportCallIssue": "warning",
+
+  // Allow implicit string concatenation
+  "reportImplicitStringConcatenation": false,
+
+  // Stub path for type stubs
+  "stubPath": "typings",
+
+  // Virtual environment path (uv uses .venv by default)
+  "venvPath": ".",
+  "venv": ".venv"
+}

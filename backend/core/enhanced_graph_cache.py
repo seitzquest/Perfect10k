@@ -38,9 +38,9 @@ class EnhancedGraphCache:
         # Check memory cache first (fastest)
         if cache_key in self.memory_cache:
             entry = self.memory_cache[cache_key]
-            entry['last_accessed'] = time.time()
+            entry["last_accessed"] = time.time()
             logger.info(f"Using memory cached graph for ({lat:.6f}, {lon:.6f})")
-            return entry['graph']
+            return entry["graph"]
 
         # Try to load from spatial tiles (very fast - permanent storage)
         start_time = time.time()
@@ -48,7 +48,9 @@ class EnhancedGraphCache:
 
         if graph:
             load_time = time.time() - start_time
-            logger.info(f"Loaded graph from spatial tiles in {load_time:.2f}s ({len(graph.nodes)} nodes)")
+            logger.info(
+                f"Loaded graph from spatial tiles in {load_time:.2f}s ({len(graph.nodes)} nodes)"
+            )
 
             # Cache in memory for immediate reuse
             self._add_to_memory_cache(cache_key, graph)
@@ -58,8 +60,14 @@ class EnhancedGraphCache:
         logger.info(f"No spatial tiles found for ({lat:.6f}, {lon:.6f}) - OSM loading needed")
         return None
 
-    def store_graph(self, graph: nx.MultiGraph, center_lat: float, center_lon: float,
-                   radius: float = 8000, semantic_features: set[str] = None) -> bool:
+    def store_graph(
+        self,
+        graph: nx.MultiGraph,
+        center_lat: float,
+        center_lon: float,
+        radius: float = 8000,
+        semantic_features: set[str] | None = None,
+    ) -> bool:
         """
         Store a graph in the spatial tile system for permanent caching.
 
@@ -77,10 +85,14 @@ class EnhancedGraphCache:
                 try:
                     semantic_features = set(semantic_features) if semantic_features else set()
                 except TypeError as e:
-                    logger.error(f"Cannot convert semantic_features to set: {e}, type: {type(semantic_features)}, value: {semantic_features}")
+                    logger.error(
+                        f"Cannot convert semantic_features to set: {e}, type: {type(semantic_features)}, value: {semantic_features}"
+                    )
                     semantic_features = set()
 
-            logger.debug(f"Storing graph with semantic_features: {semantic_features} (type: {type(semantic_features)})")
+            logger.debug(
+                f"Storing graph with semantic_features: {semantic_features} (type: {type(semantic_features)})"
+            )
 
             # Store as spatial tiles
             stored_tiles = self.tile_storage.store_graph_tiles(
@@ -89,7 +101,9 @@ class EnhancedGraphCache:
 
             if stored_tiles:
                 store_time = time.time() - start_time
-                logger.info(f"Stored graph as {len(stored_tiles)} spatial tiles in {store_time:.2f}s")
+                logger.info(
+                    f"Stored graph as {len(stored_tiles)} spatial tiles in {store_time:.2f}s"
+                )
 
                 # Also add to memory cache
                 cache_key = f"{center_lat:.4f}_{center_lon:.4f}_{int(radius)}"
@@ -109,16 +123,15 @@ class EnhancedGraphCache:
         # Remove oldest entry if cache is full
         if len(self.memory_cache) >= self.memory_cache_max_size:
             oldest_key = min(
-                self.memory_cache.keys(),
-                key=lambda k: self.memory_cache[k]['last_accessed']
+                self.memory_cache.keys(), key=lambda k: self.memory_cache[k]["last_accessed"]
             )
             del self.memory_cache[oldest_key]
 
         # Add new entry
         self.memory_cache[cache_key] = {
-            'graph': graph,
-            'cached_at': time.time(),
-            'last_accessed': time.time()
+            "graph": graph,
+            "cached_at": time.time(),
+            "last_accessed": time.time(),
         }
 
     def precompute_popular_cities(self, max_cities: int = 10):
@@ -137,7 +150,9 @@ class EnhancedGraphCache:
 
             # Check if tiles already exist for this city
             covering_tiles = self.tile_storage.get_covering_tiles(lat, lon, 15000)  # 15km radius
-            existing_tiles = [tile for tile in covering_tiles if self.tile_storage._load_tile_graph(tile)]
+            existing_tiles = [
+                tile for tile in covering_tiles if self.tile_storage._load_tile_graph(tile)
+            ]
 
             if len(existing_tiles) > 0:
                 logger.info(f"  {city_name}: {len(existing_tiles)} tiles already exist")
@@ -147,7 +162,9 @@ class EnhancedGraphCache:
                 # Note: Actual OSM loading would happen here in a full implementation
                 # This would integrate with the existing _load_graph method
 
-        logger.info(f"Precomputation status: {successful_precomputes}/{len(cities_to_process)} cities ready")
+        logger.info(
+            f"Precomputation status: {successful_precomputes}/{len(cities_to_process)} cities ready"
+        )
         return successful_precomputes
 
     def get_cache_statistics(self) -> dict:
@@ -155,28 +172,28 @@ class EnhancedGraphCache:
         tile_stats = self.tile_storage.get_storage_stats()
 
         memory_stats = {
-            'memory_cached_graphs': len(self.memory_cache),
-            'memory_cache_keys': list(self.memory_cache.keys())
+            "memory_cached_graphs": len(self.memory_cache),
+            "memory_cache_keys": list(self.memory_cache.keys()),
         }
 
         return {
-            'spatial_tile_storage': tile_stats,
-            'memory_cache': memory_stats,
-            'total_coverage_estimate': self._estimate_total_coverage()
+            "spatial_tile_storage": tile_stats,
+            "memory_cache": memory_stats,
+            "total_coverage_estimate": self._estimate_total_coverage(),
         }
 
     def _estimate_total_coverage(self) -> dict:
         """Estimate what geographic areas are covered by cached tiles."""
         stats = self.tile_storage.get_storage_stats()
-        tile_count = stats.get('tile_count', 0)
+        tile_count = stats.get("tile_count", 0)
 
         # Each precision-6 geohash covers roughly 1.2km x 0.6km
         estimated_area_km2 = tile_count * 1.2 * 0.6
 
         return {
-            'cached_tiles': tile_count,
-            'estimated_area_km2': estimated_area_km2,
-            'estimated_cities_covered': estimated_area_km2 / 200  # Rough city size estimate
+            "cached_tiles": tile_count,
+            "estimated_area_km2": estimated_area_km2,
+            "estimated_cities_covered": estimated_area_km2 / 200,  # Rough city size estimate
         }
 
     def cleanup_cache(self, max_age_days: int = 90):
@@ -189,8 +206,7 @@ class EnhancedGraphCache:
         cutoff_time = current_time - (24 * 3600)  # 24 hours
 
         keys_to_remove = [
-            key for key, entry in self.memory_cache.items()
-            if entry['last_accessed'] < cutoff_time
+            key for key, entry in self.memory_cache.items() if entry["last_accessed"] < cutoff_time
         ]
 
         for key in keys_to_remove:

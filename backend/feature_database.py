@@ -16,6 +16,7 @@ from spatial_grid import GridCell, SpatialGrid
 
 class FeatureType(Enum):
     """Supported discrete feature types."""
+
     CLOSE_TO_FOREST = "close_to_forest"
     CLOSE_TO_WATER = "close_to_water"
     CLOSE_TO_PARK = "close_to_park"
@@ -27,6 +28,7 @@ class FeatureType(Enum):
 @dataclass
 class CellFeatures:
     """Pre-computed features for a grid cell."""
+
     grid_x: int
     grid_y: int
     features: dict[FeatureType, float] = field(default_factory=dict)
@@ -63,23 +65,22 @@ class FeatureDatabase:
         # Feature computation parameters
         self.max_search_distance = 1000.0  # Maximum distance to search for features (meters)
         self.path_quality_weights = {
-            'path': 1.0,
-            'footway': 0.9,
-            'track': 0.8,
-            'cycleway': 0.7,
-            'pedestrian': 0.9,
-            'living_street': 0.6,
-            'residential': 0.4,
-            'tertiary': 0.3,
-            'secondary': 0.2,
-            'primary': 0.1,
-            'default': 0.3
+            "path": 1.0,
+            "footway": 0.9,
+            "track": 0.8,
+            "cycleway": 0.7,
+            "pedestrian": 0.9,
+            "living_street": 0.6,
+            "residential": 0.4,
+            "tertiary": 0.3,
+            "secondary": 0.2,
+            "primary": 0.1,
+            "default": 0.3,
         }
 
         logger.info("Initialized feature database")
 
-    def compute_features_for_area(self, graph: nx.MultiGraph,
-                                semantic_overlay_manager=None) -> int:
+    def compute_features_for_area(self, graph: nx.MultiGraph, semantic_overlay_manager=None) -> int:
         """
         Compute features for all cells in the spatial grid.
 
@@ -111,12 +112,16 @@ class FeatureDatabase:
             # Progress logging every 100 cells
             if cells_processed % 100 == 0:
                 elapsed = time.time() - start_time
-                logger.info(f"Processed {cells_processed}/{len(self.spatial_grid.grid)} cells "
-                           f"({elapsed:.1f}s elapsed)")
+                logger.info(
+                    f"Processed {cells_processed}/{len(self.spatial_grid.grid)} cells "
+                    f"({elapsed:.1f}s elapsed)"
+                )
 
         elapsed = time.time() - start_time
-        logger.info(f"Computed features for {cells_processed} cells in {elapsed:.2f}s "
-                   f"({cells_processed/elapsed:.1f} cells/sec)")
+        logger.info(
+            f"Computed features for {cells_processed} cells in {elapsed:.2f}s "
+            f"({cells_processed / elapsed:.1f} cells/sec)"
+        )
 
         return cells_processed
 
@@ -137,8 +142,9 @@ class FeatureDatabase:
 
         return self.cell_features.get((cell.grid_x, cell.grid_y))
 
-    def get_features_for_nodes(self, node_ids: list[int],
-                             graph: nx.MultiGraph) -> dict[int, CellFeatures]:
+    def get_features_for_nodes(
+        self, node_ids: list[int], graph: nx.MultiGraph
+    ) -> dict[int, CellFeatures]:
         """
         Get features for a list of nodes.
 
@@ -154,7 +160,7 @@ class FeatureDatabase:
         for node_id in node_ids:
             if node_id in graph.nodes:
                 node_data = graph.nodes[node_id]
-                lat, lon = node_data['y'], node_data['x']
+                lat, lon = node_data["y"], node_data["x"]
 
                 features = self.get_cell_features(lat, lon)
                 if features:
@@ -162,16 +168,14 @@ class FeatureDatabase:
 
         return node_features
 
-    def _compute_cell_features(self, cell: GridCell, graph: nx.MultiGraph,
-                             semantic_overlay_manager=None):
+    def _compute_cell_features(
+        self, cell: GridCell, graph: nx.MultiGraph, semantic_overlay_manager=None
+    ):
         """Compute all features for a single grid cell."""
         grid_coords = (cell.grid_x, cell.grid_y)
 
         # Initialize cell features
-        cell_features = CellFeatures(
-            grid_x=cell.grid_x,
-            grid_y=cell.grid_y
-        )
+        cell_features = CellFeatures(grid_x=cell.grid_x, grid_y=cell.grid_y)
 
         # Compute each feature type
         try:
@@ -184,17 +188,17 @@ class FeatureDatabase:
             cell_features.set_feature(FeatureType.INTERSECTION_DENSITY, intersection_density)
 
             # Nature features using semantic overlay manager if available
-            if semantic_overlay_manager and hasattr(self, '_preloaded_features'):
+            if semantic_overlay_manager and hasattr(self, "_preloaded_features"):
                 # Use preloaded feature data for fast computation
-                forest_score = self._compute_proximity_from_preloaded(cell, 'forests')
+                forest_score = self._compute_proximity_from_preloaded(cell, "forests")
                 cell_features.set_feature(FeatureType.CLOSE_TO_FOREST, forest_score)
 
-                rivers_score = self._compute_proximity_from_preloaded(cell, 'rivers')
-                lakes_score = self._compute_proximity_from_preloaded(cell, 'lakes')
+                rivers_score = self._compute_proximity_from_preloaded(cell, "rivers")
+                lakes_score = self._compute_proximity_from_preloaded(cell, "lakes")
                 water_score = max(rivers_score, lakes_score)  # Best of rivers/lakes
                 cell_features.set_feature(FeatureType.CLOSE_TO_WATER, water_score)
 
-                park_score = self._compute_proximity_from_preloaded(cell, 'parks')
+                park_score = self._compute_proximity_from_preloaded(cell, "parks")
                 cell_features.set_feature(FeatureType.CLOSE_TO_PARK, park_score)
 
                 # Compute elevation variety (simple approximation)
@@ -203,39 +207,47 @@ class FeatureDatabase:
             elif semantic_overlay_manager:
                 # Fallback to individual scoring (slower)
                 forest_score = self._compute_proximity_to_feature(
-                    cell, semantic_overlay_manager, 'forests'
+                    cell, semantic_overlay_manager, "forests"
                 )
                 cell_features.set_feature(FeatureType.CLOSE_TO_FOREST, forest_score)
 
                 water_score = self._compute_proximity_to_feature(
-                    cell, semantic_overlay_manager, 'rivers'
+                    cell, semantic_overlay_manager, "rivers"
                 )
                 # Also check lakes if available
                 lake_score = self._compute_proximity_to_feature(
-                    cell, semantic_overlay_manager, 'lakes'
+                    cell, semantic_overlay_manager, "lakes"
                 )
                 water_score = max(water_score, lake_score)  # Best of rivers/lakes
                 cell_features.set_feature(FeatureType.CLOSE_TO_WATER, water_score)
 
                 park_score = self._compute_proximity_to_feature(
-                    cell, semantic_overlay_manager, 'parks'
+                    cell, semantic_overlay_manager, "parks"
                 )
                 cell_features.set_feature(FeatureType.CLOSE_TO_PARK, park_score)
             else:
                 # Fallback: compute from OSM tags in the graph
-                forest_score = self._compute_nature_features_from_graph(cell, graph, ['forest', 'wood', 'tree'])
+                forest_score = self._compute_nature_features_from_graph(
+                    cell, graph, ["forest", "wood", "tree"]
+                )
                 cell_features.set_feature(FeatureType.CLOSE_TO_FOREST, forest_score)
 
-                water_score = self._compute_nature_features_from_graph(cell, graph, ['water', 'river', 'lake'])
+                water_score = self._compute_nature_features_from_graph(
+                    cell, graph, ["water", "river", "lake"]
+                )
                 cell_features.set_feature(FeatureType.CLOSE_TO_WATER, water_score)
 
-                park_score = self._compute_nature_features_from_graph(cell, graph, ['park', 'garden'])
+                park_score = self._compute_nature_features_from_graph(
+                    cell, graph, ["park", "garden"]
+                )
                 cell_features.set_feature(FeatureType.CLOSE_TO_PARK, park_score)
 
             # Store metadata
             cell_features.metadata = {
-                'nodes_in_cell': len(cell.nodes),
-                'computation_method': 'semantic_overlay' if semantic_overlay_manager else 'graph_tags'
+                "nodes_in_cell": len(cell.nodes),
+                "computation_method": "semantic_overlay"
+                if semantic_overlay_manager
+                else "graph_tags",
             }
 
         except Exception as e:
@@ -263,12 +275,12 @@ class FeatureDatabase:
 
                     # Handle multiple edges between nodes
                     for edge_attrs in edge_data.values():
-                        highway_type = edge_attrs.get('highway', 'default')
+                        highway_type = edge_attrs.get("highway", "default")
                         path_score = self.path_quality_weights.get(highway_type, 0.3)
                         edge_scores.append(path_score)
 
                         # Bonus for named paths (often more interesting)
-                        if edge_attrs.get('name'):
+                        if edge_attrs.get("name"):
                             edge_scores.append(path_score + 0.1)
             except Exception:
                 continue
@@ -282,11 +294,9 @@ class FeatureDatabase:
         # Weight higher scores more heavily
         if len(edge_scores) >= 3:
             # Use top 3 scores with decreasing weights
-            weighted_score = (edge_scores[0] * 0.5 +
-                            edge_scores[1] * 0.3 +
-                            edge_scores[2] * 0.2)
+            weighted_score = edge_scores[0] * 0.5 + edge_scores[1] * 0.3 + edge_scores[2] * 0.2
         elif len(edge_scores) == 2:
-            weighted_score = (edge_scores[0] * 0.7 + edge_scores[1] * 0.3)
+            weighted_score = edge_scores[0] * 0.7 + edge_scores[1] * 0.3
         else:
             weighted_score = edge_scores[0]
 
@@ -303,7 +313,7 @@ class FeatureDatabase:
         for node_id in cell.nodes:
             try:
                 degree = graph.degree(node_id)
-                total_degree += degree
+                total_degree += int(degree)  # type: ignore[arg-type]
                 node_count += 1
             except Exception:
                 continue
@@ -322,8 +332,9 @@ class FeatureDatabase:
             # Linear interpolation between 2 and 4
             return 0.2 + (avg_degree - 2) * 0.4
 
-    def _compute_proximity_to_feature(self, cell: GridCell, semantic_overlay_manager,
-                                    feature_type: str) -> float:
+    def _compute_proximity_to_feature(
+        self, cell: GridCell, semantic_overlay_manager, feature_type: str
+    ) -> float:
         """Compute proximity score to a specific feature type using semantic overlays."""
         try:
             # Score the cell center location
@@ -334,12 +345,15 @@ class FeatureDatabase:
             return scores.get(feature_type, 0.0)
 
         except Exception as e:
-            logger.debug(f"Failed to compute {feature_type} proximity for cell "
-                        f"({cell.grid_x}, {cell.grid_y}): {e}")
+            logger.debug(
+                f"Failed to compute {feature_type} proximity for cell "
+                f"({cell.grid_x}, {cell.grid_y}): {e}"
+            )
             return 0.0
 
-    def _compute_nature_features_from_graph(self, cell: GridCell, graph: nx.MultiGraph,
-                                          keywords: list[str]) -> float:
+    def _compute_nature_features_from_graph(
+        self, cell: GridCell, graph: nx.MultiGraph, keywords: list[str]
+    ) -> float:
         """Fallback: compute nature features from OSM tags in graph nodes."""
         if not cell.nodes:
             return 0.0
@@ -394,20 +408,18 @@ class FeatureDatabase:
             try:
                 node_data = graph.nodes[node_id]
                 # Try to get elevation from OSM data
-                elevation = node_data.get('elevation', None)
+                import contextlib
+
+                elevation = node_data.get("elevation", None)
                 if elevation is not None:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         elevations.append(float(elevation))
-                    except (ValueError, TypeError):
-                        pass
 
                 # Also check for 'ele' tag which is common in OSM
-                ele = node_data.get('ele', None)
+                ele = node_data.get("ele", None)
                 if ele is not None:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         elevations.append(float(ele))
-                    except (ValueError, TypeError):
-                        pass
 
                 # Don't check too many nodes for performance
                 if len(elevations) > 20:
@@ -466,23 +478,30 @@ class FeatureDatabase:
             min_lon -= margin
             max_lon += margin
 
-            logger.info(f"Pre-loading semantic data for area: {min_lat:.4f} to {max_lat:.4f} lat, "
-                       f"{min_lon:.4f} to {max_lon:.4f} lon")
+            logger.info(
+                f"Pre-loading semantic data for area: {min_lat:.4f} to {max_lat:.4f} lat, "
+                f"{min_lon:.4f} to {max_lon:.4f} lon"
+            )
 
             # Import BoundingBox here to avoid circular imports
             from semantic_overlays import BoundingBox
+
             bbox = BoundingBox(south=min_lat, west=min_lon, north=max_lat, east=max_lon)
 
             # Pre-load all feature types for the entire area and store for fast access
             self._preloaded_features = {}
-            for feature_type in ['forests', 'rivers', 'lakes', 'parks']:
+            for feature_type in ["forests", "rivers", "lakes", "parks"]:
                 try:
-                    feature_data = semantic_overlay_manager.get_semantic_overlays(feature_type, bbox, use_cache=True)
+                    feature_data = semantic_overlay_manager.get_semantic_overlays(
+                        feature_type, bbox, use_cache=True
+                    )
                     self._preloaded_features[feature_type] = feature_data
-                    logger.info(f"Pre-loaded {feature_type} data: {len(feature_data.get('features', []))} features")
+                    logger.info(
+                        f"Pre-loaded {feature_type} data: {len(feature_data.get('features', []))} features"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to pre-load {feature_type}: {e}")
-                    self._preloaded_features[feature_type] = {'features': []}
+                    self._preloaded_features[feature_type] = {"features": []}
 
         except Exception as e:
             logger.error(f"Failed to pre-load semantic data: {e}")
@@ -491,39 +510,46 @@ class FeatureDatabase:
     def _compute_proximity_from_preloaded(self, cell: GridCell, feature_type: str) -> float:
         """Compute proximity score using preloaded feature data (fast)."""
         try:
-            if not hasattr(self, '_preloaded_features') or feature_type not in self._preloaded_features:
+            if (
+                not hasattr(self, "_preloaded_features")
+                or feature_type not in self._preloaded_features
+            ):
                 return 0.0
 
             feature_data = self._preloaded_features[feature_type]
-            features = feature_data.get('features', [])
+            features = feature_data.get("features", [])
 
             if not features:
                 return 0.0
 
             # Calculate minimum distance to any feature of this type
-            min_distance = float('inf')
+            min_distance = float("inf")
             cell_lat, cell_lon = cell.center_lat, cell.center_lon
 
             for feature in features:
-                geometry = feature.get('geometry', {})
-                coordinates = geometry.get('coordinates', [])
+                geometry = feature.get("geometry", {})
+                coordinates = geometry.get("coordinates", [])
 
-                if geometry.get('type') == 'Polygon' and coordinates:
+                if geometry.get("type") == "Polygon" and coordinates:
                     # For polygons, check distance to perimeter
                     for point in coordinates[0]:  # Outer ring
                         if len(point) >= 2:
                             point_lon, point_lat = point[0], point[1]
-                            distance = self._haversine_distance(cell_lat, cell_lon, point_lat, point_lon)
+                            distance = self._haversine_distance(
+                                cell_lat, cell_lon, point_lat, point_lon
+                            )
                             min_distance = min(min_distance, distance)
-                elif geometry.get('type') == 'LineString' and coordinates:
+                elif geometry.get("type") == "LineString" and coordinates:
                     # For lines (rivers), check distance to line segments
                     for point in coordinates:
                         if len(point) >= 2:
                             point_lon, point_lat = point[0], point[1]
-                            distance = self._haversine_distance(cell_lat, cell_lon, point_lat, point_lon)
+                            distance = self._haversine_distance(
+                                cell_lat, cell_lon, point_lat, point_lon
+                            )
                             min_distance = min(min_distance, distance)
 
-            if min_distance == float('inf'):
+            if min_distance == float("inf"):
                 return 0.0
 
             # Convert distance to score (closer = higher score)
@@ -542,19 +568,19 @@ class FeatureDatabase:
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance in meters between two points."""
 
-        R = 6371000  # Earth's radius in meters
+        earth_radius_m = 6371000  # Earth's radius in meters
 
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
         dlat_rad = math.radians(lat2 - lat1)
         dlon_rad = math.radians(lon2 - lon1)
 
-        a = (math.sin(dlat_rad/2) * math.sin(dlat_rad/2) +
-             math.cos(lat1_rad) * math.cos(lat2_rad) *
-             math.sin(dlon_rad/2) * math.sin(dlon_rad/2))
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        a = math.sin(dlat_rad / 2) * math.sin(dlat_rad / 2) + math.cos(lat1_rad) * math.cos(
+            lat2_rad
+        ) * math.sin(dlon_rad / 2) * math.sin(dlon_rad / 2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        return R * c
+        return earth_radius_m * c
 
     def get_statistics(self) -> dict:
         """Get statistics about the feature database."""
@@ -572,22 +598,23 @@ class FeatureDatabase:
 
             if values:
                 feature_stats[feature_type.value] = {
-                    'mean': sum(values) / len(values),
-                    'min': min(values),
-                    'max': max(values),
-                    'non_zero_count': sum(1 for v in values if v > 0.1)
+                    "mean": sum(values) / len(values),
+                    "min": min(values),
+                    "max": max(values),
+                    "non_zero_count": sum(1 for v in values if v > 0.1),
                 }
 
         return {
-            'cells_with_features': len(self.cell_features),
-            'total_grid_cells': len(self.spatial_grid.grid),
-            'coverage_percentage': (len(self.cell_features) / len(self.spatial_grid.grid) * 100)
-                                  if self.spatial_grid.grid else 0,
-            'feature_statistics': feature_stats,
-            'computation_parameters': {
-                'max_search_distance': self.max_search_distance,
-                'path_quality_weights': self.path_quality_weights
-            }
+            "cells_with_features": len(self.cell_features),
+            "total_grid_cells": len(self.spatial_grid.grid),
+            "coverage_percentage": (len(self.cell_features) / len(self.spatial_grid.grid) * 100)
+            if self.spatial_grid.grid
+            else 0,
+            "feature_statistics": feature_stats,
+            "computation_parameters": {
+                "max_search_distance": self.max_search_distance,
+                "path_quality_weights": self.path_quality_weights,
+            },
         }
 
     def clear(self):

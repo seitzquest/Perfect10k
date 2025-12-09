@@ -17,20 +17,19 @@ def check_imports():
         from clean_router import CleanRouter  # noqa: F401
         from core.spatial_tile_storage import SpatialTileStorage  # noqa: F401
         from semantic_overlays import SemanticOverlayManager  # noqa: F401
+
         print("✅ All core modules import successfully")
         return True
     except ImportError as e:
         print(f"❌ Import error: {e}")
         return False
 
+
 def check_storage():
     """Verify storage directories exist."""
     print("🗂️  Checking storage...")
 
-    storage_dirs = [
-        Path("storage/tiles"),
-        Path("cache/overlays")
-    ]
+    storage_dirs = [Path("storage/tiles"), Path("cache/overlays")]
 
     for dir_path in storage_dirs:
         if not dir_path.exists():
@@ -39,6 +38,7 @@ def check_storage():
 
     print("✅ Storage directories ready")
     return True
+
 
 def check_components():
     """Test that components can be instantiated."""
@@ -60,15 +60,12 @@ def check_components():
         print(f"❌ Component error: {e}")
         return False
 
+
 def main():
     print("🚀 Perfect10k Clean Backend Startup Check")
     print("=" * 50)
 
-    checks = [
-        check_imports,
-        check_storage,
-        check_components
-    ]
+    checks = [check_imports, check_storage, check_components]
 
     all_passed = True
     for check in checks:
@@ -84,6 +81,7 @@ def main():
         print("❌ Some startup checks failed")
         print("🔧 Please fix the issues above before starting the server")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

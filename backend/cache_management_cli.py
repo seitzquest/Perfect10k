@@ -33,7 +33,7 @@ async def cmd_info():
     print(f"Is Docker Volume: {docker_info['is_docker_volume']}")
 
     print("\nDirectory Breakdown:")
-    for name, info in docker_info['directories'].items():
+    for name, info in docker_info["directories"].items():
         print(f"  {name}: {info['size_mb']:.1f}MB ({info['file_count']} files)")
 
     # Smart cache stats
@@ -88,7 +88,7 @@ async def cmd_clear(args):
     else:
         print("🧹 Clearing all cache...")
         confirm = input("This will delete all cached data. Continue? (y/N): ")
-        if confirm.lower() != 'y':
+        if confirm.lower() != "y":
             print("Operation cancelled")
             return False
 
@@ -111,7 +111,7 @@ async def cmd_warm(args):
     if args.locations:
         for loc_str in args.locations:
             try:
-                lat, lon = map(float, loc_str.split(','))
+                lat, lon = map(float, loc_str.split(","))
                 locations.append((lat, lon))
             except ValueError:
                 print(f"❌ Invalid location format: {loc_str} (expected: lat,lon)")
@@ -121,9 +121,9 @@ async def cmd_warm(args):
         locations = [
             (48.1351, 11.5820),  # Munich
             (52.5200, 13.4050),  # Berlin
-            (53.5511, 9.9937),   # Hamburg
-            (50.1109, 8.6821),   # Frankfurt
-            (50.9375, 6.9603),   # Cologne
+            (53.5511, 9.9937),  # Hamburg
+            (50.1109, 8.6821),  # Frankfurt
+            (50.9375, 6.9603),  # Cologne
         ]
 
     # Start job manager if not running
@@ -143,7 +143,7 @@ async def cmd_warm(args):
     completed = 0
     for job_id in warming_jobs:
         result = await job_manager.wait_for_job(job_id, timeout=120.0)
-        if result and result.status.value == 'completed':
+        if result and result.status.value == "completed":
             completed += 1
             print(f"✅ Job completed ({completed}/{len(warming_jobs)})")
         else:
@@ -194,33 +194,37 @@ Examples:
   %(prog)s clear --type graphs                 # Clear specific cache type
   %(prog)s warm --locations "48.1,11.6"        # Warm specific location
   %(prog)s monitor                             # Monitor cache activity
-        """
+        """,
     )
 
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Info command
-    subparsers.add_parser('info', help='Show cache information')
+    subparsers.add_parser("info", help="Show cache information")
 
     # Export command
-    export_parser = subparsers.add_parser('export', help='Export cache for backup')
-    export_parser.add_argument('--name', help='Export name (default: timestamp)')
+    export_parser = subparsers.add_parser("export", help="Export cache for backup")
+    export_parser.add_argument("--name", help="Export name (default: timestamp)")
 
     # Import command
-    import_parser = subparsers.add_parser('import', help='Import cache from backup')
-    import_parser.add_argument('path', help='Path to cache backup file')
-    import_parser.add_argument('--overwrite', action='store_true', help='Overwrite existing cache')
+    import_parser = subparsers.add_parser("import", help="Import cache from backup")
+    import_parser.add_argument("path", help="Path to cache backup file")
+    import_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing cache")
 
     # Clear command
-    clear_parser = subparsers.add_parser('clear', help='Clear cache')
-    clear_parser.add_argument('--type', choices=['graphs', 'smart_cache', 'jobs'], help='Specific cache type to clear')
+    clear_parser = subparsers.add_parser("clear", help="Clear cache")
+    clear_parser.add_argument(
+        "--type", choices=["graphs", "smart_cache", "jobs"], help="Specific cache type to clear"
+    )
 
     # Warm command
-    warm_parser = subparsers.add_parser('warm', help='Warm cache for locations')
-    warm_parser.add_argument('--locations', nargs='+', help='Locations as "lat,lon" (default: popular cities)')
+    warm_parser = subparsers.add_parser("warm", help="Warm cache for locations")
+    warm_parser.add_argument(
+        "--locations", nargs="+", help='Locations as "lat,lon" (default: popular cities)'
+    )
 
     # Monitor command
-    subparsers.add_parser('monitor', help='Monitor cache activity')
+    subparsers.add_parser("monitor", help="Monitor cache activity")
 
     args = parser.parse_args()
 
@@ -229,17 +233,17 @@ Examples:
         return
 
     # Run appropriate command
-    if args.command == 'info':
+    if args.command == "info":
         asyncio.run(cmd_info())
-    elif args.command == 'export':
+    elif args.command == "export":
         asyncio.run(cmd_export(args))
-    elif args.command == 'import':
+    elif args.command == "import":
         asyncio.run(cmd_import(args))
-    elif args.command == 'clear':
+    elif args.command == "clear":
         asyncio.run(cmd_clear(args))
-    elif args.command == 'warm':
+    elif args.command == "warm":
         asyncio.run(cmd_warm(args))
-    elif args.command == 'monitor':
+    elif args.command == "monitor":
         asyncio.run(cmd_monitor())
 
 

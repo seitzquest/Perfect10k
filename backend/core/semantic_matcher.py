@@ -3,12 +3,13 @@ Semantic matching for route preferences.
 Enhanced semantic matching that translates natural language preferences into route values.
 """
 
+from typing import ClassVar
 
 
 class SemanticMatcher:
     """Enhanced semantic matching for route preferences."""
 
-    PREFERENCE_KEYWORDS = {
+    PREFERENCE_KEYWORDS: ClassVar[dict[str, list[str]]] = {
         "nature": ["park", "forest", "green", "tree", "garden", "nature", "woods", "trail"],
         "water": ["river", "lake", "pond", "stream", "water", "creek", "canal", "waterfront"],
         "quiet": ["residential", "quiet", "peaceful", "path", "footway", "calm", "serene"],
@@ -76,7 +77,9 @@ class SemanticMatcher:
 
         return values
 
-    def calculate_node_value(self, node_id: int, value_function: dict[str, float], graph=None) -> tuple[float, str]:
+    def calculate_node_value(
+        self, node_id: int, value_function: dict[str, float], graph=None
+    ) -> tuple[float, str]:
         """
         Calculate the value score for a node based on OSM data and preferences.
         Returns (score, explanation) tuple.
@@ -92,23 +95,29 @@ class SemanticMatcher:
             base_score = 0.3
 
             # Check node's own tags for relevant features
-            node_score, node_reasons = self._score_node_tags_with_explanation(node_data, value_function)
+            node_score, node_reasons = self._score_node_tags_with_explanation(
+                node_data, value_function
+            )
             explanations.extend(node_reasons)
 
             # Check connected edges for path types and features
-            edge_score, edge_reasons = self._score_connected_edges_with_explanation(graph, node_id, value_function)
+            edge_score, edge_reasons = self._score_connected_edges_with_explanation(
+                graph, node_id, value_function
+            )
             explanations.extend(edge_reasons)
 
             # Check for nearby points of interest
-            poi_score, poi_reasons = self._score_nearby_features_with_explanation(graph, node_id, value_function)
+            poi_score, poi_reasons = self._score_nearby_features_with_explanation(
+                graph, node_id, value_function
+            )
             explanations.extend(poi_reasons)
 
             # Combine scores with weights
             final_score = (
-                base_score * 0.2 +           # Base walkability
-                node_score * 0.3 +           # Node features
-                edge_score * 0.4 +           # Path quality
-                poi_score * 0.1              # Nearby POIs
+                base_score * 0.2  # Base walkability
+                + node_score * 0.3  # Node features
+                + edge_score * 0.4  # Path quality
+                + poi_score * 0.1  # Nearby POIs
             )
 
             # Ensure score is in [0, 1] range
@@ -139,24 +148,37 @@ class SemanticMatcher:
                 tag_text = f"{tag_key} {tag_value}".lower()
 
                 # Look for water features
-                if any(keyword in tag_text for keyword in ["water", "river", "lake", "pond", "stream", "fountain"]):
+                if any(
+                    keyword in tag_text
+                    for keyword in ["water", "river", "lake", "pond", "stream", "fountain"]
+                ):
                     score += 0.8
 
                 # Look for nature features
-                if any(keyword in tag_text for keyword in ["park", "garden", "tree", "forest", "green", "nature"]):
+                if any(
+                    keyword in tag_text
+                    for keyword in ["park", "garden", "tree", "forest", "green", "nature"]
+                ):
                     score += 0.7
 
                 # Look for scenic features
-                if any(keyword in tag_text for keyword in ["viewpoint", "scenic", "vista", "overlook", "monument"]):
+                if any(
+                    keyword in tag_text
+                    for keyword in ["viewpoint", "scenic", "vista", "overlook", "monument"]
+                ):
                     score += 0.6
 
                 # Look for amenities
-                if any(keyword in tag_text for keyword in ["shop", "cafe", "restaurant", "amenity"]):
+                if any(
+                    keyword in tag_text for keyword in ["shop", "cafe", "restaurant", "amenity"]
+                ):
                     score += 0.4
 
         return min(score, 1.0)
 
-    def _score_node_tags_with_explanation(self, node_data: dict, value_function: dict[str, float]) -> tuple[float, list[str]]:
+    def _score_node_tags_with_explanation(
+        self, node_data: dict, value_function: dict[str, float]
+    ) -> tuple[float, list[str]]:
         """Score a node based on its OSM tags with explanations."""
         score = 0.0
         reasons = []
@@ -196,7 +218,9 @@ class SemanticMatcher:
 
         return min(score, 1.0), reasons
 
-    def _score_connected_edges(self, graph, node_id: int, value_function: dict[str, float]) -> float:
+    def _score_connected_edges(
+        self, graph, node_id: int, value_function: dict[str, float]
+    ) -> float:
         """Score based on the types of paths connected to this node."""
         edge_scores = []
 
@@ -207,14 +231,16 @@ class SemanticMatcher:
 
                 # Handle multiple edges between same nodes
                 for _edge_key, edge_attrs in edge_data.items():
-                    highway_type = edge_attrs.get('highway', 'default')
+                    highway_type = edge_attrs.get("highway", "default")
 
                     # Get score from value function
-                    path_score = value_function.get(highway_type, value_function.get('default', 0.3))
+                    path_score = value_function.get(
+                        highway_type, value_function.get("default", 0.3)
+                    )
                     edge_scores.append(path_score)
 
                     # Bonus for named paths (often more interesting)
-                    if edge_attrs.get('name'):
+                    if edge_attrs.get("name"):
                         edge_scores.append(path_score + 0.1)
         except Exception:
             pass
@@ -222,7 +248,9 @@ class SemanticMatcher:
         # Return average score of connected edges
         return sum(edge_scores) / len(edge_scores) if edge_scores else 0.3
 
-    def _score_connected_edges_with_explanation(self, graph, node_id: int, value_function: dict[str, float]) -> tuple[float, list[str]]:
+    def _score_connected_edges_with_explanation(
+        self, graph, node_id: int, value_function: dict[str, float]
+    ) -> tuple[float, list[str]]:
         """Score based on the types of paths connected to this node with explanations."""
         edge_scores = []
         reasons = []
@@ -235,15 +263,17 @@ class SemanticMatcher:
 
                 # Handle multiple edges between same nodes
                 for _edge_key, edge_attrs in edge_data.items():
-                    highway_type = edge_attrs.get('highway', 'default')
+                    highway_type = edge_attrs.get("highway", "default")
                     path_types.append(highway_type)
 
                     # Get score from value function
-                    path_score = value_function.get(highway_type, value_function.get('default', 0.3))
+                    path_score = value_function.get(
+                        highway_type, value_function.get("default", 0.3)
+                    )
                     edge_scores.append(path_score)
 
                     # Bonus for named paths (often more interesting)
-                    if edge_attrs.get('name'):
+                    if edge_attrs.get("name"):
                         edge_scores.append(path_score + 0.1)
                         reasons.append(f"named {highway_type}")
         except Exception:
@@ -251,20 +281,26 @@ class SemanticMatcher:
 
         # Add reasons for high-quality path types
         if path_types:
-            best_paths = [p for p in path_types if p in ['footway', 'path', 'track'] and value_function.get(p, 0) > 0.6]
+            best_paths = [
+                p
+                for p in path_types
+                if p in ["footway", "path", "track"] and value_function.get(p, 0) > 0.6
+            ]
             if best_paths:
-                path_type = best_paths[0].replace('way', ' path')
+                path_type = best_paths[0].replace("way", " path")
                 reasons.append(f"good {path_type}")
 
         # Return average score of connected edges
         avg_score = sum(edge_scores) / len(edge_scores) if edge_scores else 0.3
         return avg_score, reasons
 
-    def _score_nearby_features(self, graph, node_id: int, value_function: dict[str, float]) -> float:
+    def _score_nearby_features(
+        self, graph, node_id: int, value_function: dict[str, float]
+    ) -> float:
         """Score based on nearby interesting features within walking distance."""
         try:
             node_data = graph.nodes[node_id]
-            node_lat, node_lon = node_data['y'], node_data['x']
+            node_lat, node_lon = node_data["y"], node_data["x"]
 
             nearby_score = 0.0
             checked_nodes = 0
@@ -274,7 +310,7 @@ class SemanticMatcher:
                 if other_node == node_id:
                     continue
 
-                other_lat, other_lon = other_data['y'], other_data['x']
+                other_lat, other_lon = other_data["y"], other_data["x"]
 
                 # Simple distance check (rough approximation)
                 lat_diff = abs(node_lat - other_lat)
@@ -295,11 +331,13 @@ class SemanticMatcher:
         except Exception:
             return 0.0
 
-    def _score_nearby_features_with_explanation(self, graph, node_id: int, value_function: dict[str, float]) -> tuple[float, list[str]]:
+    def _score_nearby_features_with_explanation(
+        self, graph, node_id: int, value_function: dict[str, float]
+    ) -> tuple[float, list[str]]:
         """Score based on nearby interesting features with explanations."""
         try:
             node_data = graph.nodes[node_id]
-            node_lat, node_lon = node_data['y'], node_data['x']
+            node_lat, node_lon = node_data["y"], node_data["x"]
 
             nearby_score = 0.0
             checked_nodes = 0
@@ -310,7 +348,7 @@ class SemanticMatcher:
                 if other_node == node_id:
                     continue
 
-                other_lat, other_lon = other_data['y'], other_data['x']
+                other_lat, other_lon = other_data["y"], other_data["x"]
 
                 # Simple distance check (rough approximation)
                 lat_diff = abs(node_lat - other_lat)
@@ -318,10 +356,14 @@ class SemanticMatcher:
 
                 # ~200m in degrees (very rough)
                 if lat_diff < 0.002 and lon_diff < 0.002:
-                    feature_score, feature_reasons = self._score_node_tags_with_explanation(other_data, value_function)
+                    feature_score, feature_reasons = self._score_node_tags_with_explanation(
+                        other_data, value_function
+                    )
                     if feature_score > 0.1 and feature_reasons:
                         nearby_score += feature_score * 0.1  # Reduced weight for nearby features
-                        reasons.extend([f"nearby {reason}" for reason in feature_reasons[:1]])  # Limit to avoid spam
+                        reasons.extend(
+                            [f"nearby {reason}" for reason in feature_reasons[:1]]
+                        )  # Limit to avoid spam
                     checked_nodes += 1
 
                     # Don't check too many nodes for performance

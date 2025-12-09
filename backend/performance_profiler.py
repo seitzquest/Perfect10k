@@ -28,34 +28,34 @@ class PerformanceProfiler:
         """Start a new profiling session."""
         self.session_start = time.perf_counter()
         self.current_session = {
-            'operation': operation,
-            'start_time': self.session_start,
-            'steps': []
+            "operation": operation,
+            "start_time": self.session_start,
+            "steps": [],
         }
         logger.info(f"🔍 PROFILING: Starting {operation}")
 
     def step(self, step_name: str):
         """Record a step in the current session."""
+        if self.session_start is None:
+            return
         now = time.perf_counter()
         elapsed = (now - self.session_start) * 1000  # ms
 
-        self.current_session['steps'].append({
-            'name': step_name,
-            'elapsed_ms': elapsed,
-            'timestamp': now
-        })
+        self.current_session["steps"].append(
+            {"name": step_name, "elapsed_ms": elapsed, "timestamp": now}
+        )
 
         logger.info(f"⏱️  STEP: {step_name} completed in {elapsed:.1f}ms (total: {elapsed:.1f}ms)")
 
     def end_session(self) -> dict[str, Any]:
         """End the current session and return timing data."""
-        if not self.current_session:
+        if not self.current_session or self.session_start is None:
             return {}
 
         total_time = (time.perf_counter() - self.session_start) * 1000
-        self.current_session['total_ms'] = total_time
+        self.current_session["total_ms"] = total_time
 
-        operation = self.current_session['operation']
+        operation = self.current_session["operation"]
         if operation not in self.timings:
             self.timings[operation] = []
         self.timings[operation].append(total_time)
@@ -63,9 +63,9 @@ class PerformanceProfiler:
         logger.info(f"🏁 PROFILING: {operation} completed in {total_time:.1f}ms")
 
         # Log step breakdown
-        for i, step in enumerate(self.current_session['steps']):
+        for i, step in enumerate(self.current_session["steps"]):
             if i > 0:
-                step_time = step['elapsed_ms'] - self.current_session['steps'][i-1]['elapsed_ms']
+                step_time = step["elapsed_ms"] - self.current_session["steps"][i - 1]["elapsed_ms"]
                 logger.info(f"   └─ {step['name']}: {step_time:.1f}ms")
             else:
                 logger.info(f"   └─ {step['name']}: {step['elapsed_ms']:.1f}ms")
@@ -77,24 +77,24 @@ class PerformanceProfiler:
         stats = {}
         for operation, times in self.timings.items():
             stats[operation] = {
-                'count': len(times),
-                'avg_ms': sum(times) / len(times),
-                'min_ms': min(times),
-                'max_ms': max(times),
-                'last_ms': times[-1] if times else 0
+                "count": len(times),
+                "avg_ms": sum(times) / len(times),
+                "min_ms": min(times),
+                "max_ms": max(times),
+                "last_ms": times[-1] if times else 0,
             }
         return stats
 
-    def save_profile(self, filename: str = None):
+    def save_profile(self, filename: str | None = None):
         """Save profiling data to file."""
         if not filename:
             filename = f"profile_{int(time.time())}.json"
 
         profile_data = {
-            'timestamp': time.time(),
-            'current_session': self.current_session,
-            'stats': self.get_stats(),
-            'raw_timings': self.timings
+            "timestamp": time.time(),
+            "current_session": self.current_session,
+            "stats": self.get_stats(),
+            "raw_timings": self.timings,
         }
 
         Path(filename).write_text(json.dumps(profile_data, indent=2))
@@ -105,12 +105,15 @@ class PerformanceProfiler:
 profiler = PerformanceProfiler()
 
 
-def profile_function(operation_name: str = None):
+def profile_function(operation_name: str | None = None):
     """Decorator to profile individual functions."""
+
     def decorator(func):
         nonlocal operation_name
         if operation_name is None:
             operation_name = f"{func.__module__}.{func.__name__}"
+
+        final_op_name = operation_name  # Capture the value
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -120,14 +123,15 @@ def profile_function(operation_name: str = None):
                 return result
             finally:
                 elapsed = (time.perf_counter() - start_time) * 1000
-                logger.info(f"⚡ FUNCTION: {operation_name} took {elapsed:.1f}ms")
+                logger.info(f"⚡ FUNCTION: {final_op_name} took {elapsed:.1f}ms")
 
                 # Add to global timings
-                if operation_name not in profiler.timings:
-                    profiler.timings[operation_name] = []
-                profiler.timings[operation_name].append(elapsed)
+                if final_op_name not in profiler.timings:
+                    profiler.timings[final_op_name] = []
+                profiler.timings[final_op_name].append(elapsed)
 
         return wrapper
+
     return decorator
 
 
@@ -166,25 +170,29 @@ def get_performance_report() -> str:
     report = ["🚀 PERFORMANCE REPORT", "=" * 50]
 
     # Sort by average time
-    sorted_ops = sorted(stats.items(), key=lambda x: x[1]['avg_ms'], reverse=True)
+    sorted_ops = sorted(stats.items(), key=lambda x: x[1]["avg_ms"], reverse=True)
 
     for operation, data in sorted_ops:
-        avg_ms = data['avg_ms']
+        avg_ms = data["avg_ms"]
         status = "🔴 SLOW" if avg_ms > 1000 else "🟡 MODERATE" if avg_ms > 100 else "🟢 FAST"
 
-        report.extend([
-            f"\n{status} {operation}:",
-            f"  Average: {avg_ms:.1f}ms",
-            f"  Range: {data['min_ms']:.1f}ms - {data['max_ms']:.1f}ms",
-            f"  Count: {data['count']} calls"
-        ])
+        report.extend(
+            [
+                f"\n{status} {operation}:",
+                f"  Average: {avg_ms:.1f}ms",
+                f"  Range: {data['min_ms']:.1f}ms - {data['max_ms']:.1f}ms",
+                f"  Count: {data['count']} calls",
+            ]
+        )
 
     # Performance targets
-    report.extend([
-        "\n🎯 PERFORMANCE TARGETS:",
-        "  🟢 Target: <100ms per operation",
-        "  🏆 Goal: <1000ms total route generation"
-    ])
+    report.extend(
+        [
+            "\n🎯 PERFORMANCE TARGETS:",
+            "  🟢 Target: <100ms per operation",
+            "  🏆 Goal: <1000ms total route generation",
+        ]
+    )
 
     return "\n".join(report)
 
@@ -193,5 +201,5 @@ def get_performance_report() -> str:
 def log_performance_summary():
     """Log a performance summary."""
     report = get_performance_report()
-    for line in report.split('\n'):
+    for line in report.split("\n"):
         logger.info(line)

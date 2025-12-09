@@ -57,7 +57,9 @@ class SemanticGrid:
         # Fetch POI data for the area
         center_lat = (min_lat + max_lat) / 2
         center_lon = (min_lon + max_lon) / 2
-        radius = max(self._haversine_distance(min_lat, min_lon, max_lat, max_lon) / 2, 1000)  # At least 1km
+        radius = max(
+            self._haversine_distance(min_lat, min_lon, max_lat, max_lon) / 2, 1000
+        )  # At least 1km
 
         self.poi_enricher = POIEnricher()
         self.poi_enricher.fetch_pois(center_lat, center_lon, radius)
@@ -161,14 +163,18 @@ class SemanticGrid:
         }
 
         # Get POI features for this cell (much more reliable than OSM graph tags)
-        if hasattr(self, 'poi_enricher') and self.poi_enricher:
-            poi_features = self.poi_enricher.get_nearby_features(cell_lat, cell_lon, self.cell_size_meters / 2)
+        if hasattr(self, "poi_enricher") and self.poi_enricher:
+            poi_features = self.poi_enricher.get_nearby_features(
+                cell_lat, cell_lon, self.cell_size_meters / 2
+            )
             for feature in poi_features:
                 if feature in feature_weights:
                     # POI features get boosted weight since they're more reliable semantic data
                     # Scale with number of nodes so they compete with path features
                     boost = max(5, len(nodes) * 0.3)  # Ensure POI features are prominent
-                    feature_counts[feature] = feature_counts.get(feature, 0) + feature_weights[feature] * boost
+                    feature_counts[feature] = (
+                        feature_counts.get(feature, 0) + feature_weights[feature] * boost
+                    )
 
         # Analyze all nodes and edges in cell (mainly for path quality now)
         for node_id in nodes:
@@ -182,7 +188,9 @@ class SemanticGrid:
                     # Count feature occurrences
                     for feature, weight in feature_weights.items():
                         if feature in tag_text:
-                            feature_counts[feature] = feature_counts.get(feature, 0) + weight * 0.5  # Reduced weight
+                            feature_counts[feature] = (
+                                feature_counts.get(feature, 0) + weight * 0.5
+                            )  # Reduced weight
 
             # Check connected edges
             try:
@@ -376,7 +384,8 @@ class SemanticGrid:
                 if (grid_x + dx, grid_y + dy) in self.grid:
                     return self.grid[(grid_x + dx, grid_y + dy)]
 
-        return None
+        # Return None if no cell found - caller should handle this
+        return None  # type: ignore[return-value]
 
     def _meters_to_lat_degrees(self, meters: float) -> float:
         """Convert meters to latitude degrees (approximate)."""
@@ -388,20 +397,20 @@ class SemanticGrid:
 
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate haversine distance in meters."""
-        R = 6371000  # Earth radius in meters
+        earth_radius_m = 6371000  # Earth radius in meters
 
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)
         delta_lat = math.radians(lat2 - lat1)
         delta_lon = math.radians(lon2 - lon1)
 
-        a = (math.sin(delta_lat/2) * math.sin(delta_lat/2) +
-             math.cos(lat1_rad) * math.cos(lat2_rad) *
-             math.sin(delta_lon/2) * math.sin(delta_lon/2))
+        a = math.sin(delta_lat / 2) * math.sin(delta_lat / 2) + math.cos(lat1_rad) * math.cos(
+            lat2_rad
+        ) * math.sin(delta_lon / 2) * math.sin(delta_lon / 2)
 
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-        return R * c
+        return earth_radius_m * c
 
     def save_to_disk(self, filepath: str) -> None:
         """Save semantic grid to disk."""
