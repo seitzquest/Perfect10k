@@ -13,10 +13,10 @@ def check_imports():
     print("🔍 Checking imports...")
 
     try:
-        from clean_candidate_generator import CleanCandidateGenerator  # noqa: F401
-        from clean_router import CleanRouter  # noqa: F401
-        from core.spatial_tile_storage import SpatialTileStorage  # noqa: F401
-        from semantic_overlays import SemanticOverlayManager  # noqa: F401
+        from backend.clean_candidate_generator import CleanCandidateGenerator  # noqa: F401
+        from backend.clean_router import CleanRouter  # noqa: F401
+        from backend.core.spatial_tile_storage import SpatialTileStorage  # noqa: F401
+        from backend.semantic_overlays import SemanticOverlayManager  # noqa: F401
 
         print("✅ All core modules import successfully")
         return True
@@ -45,8 +45,8 @@ def check_components():
     print("⚙️  Testing component instantiation...")
 
     try:
-        from clean_router import CleanRouter
-        from semantic_overlays import SemanticOverlayManager
+        from backend.clean_router import CleanRouter
+        from backend.semantic_overlays import SemanticOverlayManager
 
         # Test semantic overlay manager
         overlay_manager = SemanticOverlayManager()

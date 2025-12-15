@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from performance_profiler import profile_function
+
+from backend.performance_profiler import profile_function
 
 
 class JobStatus(Enum):

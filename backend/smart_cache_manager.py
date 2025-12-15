@@ -25,7 +25,8 @@ from typing import Any
 import networkx as nx
 import numpy as np
 from loguru import logger
-from performance_profiler import profile_function
+
+from backend.performance_profiler import profile_function
 
 
 @dataclass

@@ -68,6 +68,9 @@ def start_backend():
         print_colored("❌ Backend directory not found", Colors.RED)
         return None
 
+    # Add project root to PYTHONPATH so backend package imports work
+    project_root = str(Path.cwd())
+
     # Change to backend directory
     os.chdir(backend_dir)
 
@@ -75,13 +78,18 @@ def start_backend():
     cmd = [sys.executable, "main.py"]
 
     try:
+        # Set up environment with project root in PYTHONPATH
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"  # Force Python unbuffered output
+        env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
+
         process = subprocess.Popen(
             cmd,
             stdout=None,  # Don't capture stdout - let it print directly
             stderr=None,  # Don't capture stderr - let it print directly
             universal_newlines=True,
             bufsize=0,  # No buffering
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},  # Force Python unbuffered output
+            env=env,
         )
         print_colored("✅ Backend server starting on http://localhost:8000", Colors.GREEN)
         return process

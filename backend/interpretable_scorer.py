@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
 
-from feature_database import CellFeatures, FeatureType
+from backend.feature_database import CellFeatures, FeatureType
 
 
 class PreferenceCategory(Enum):

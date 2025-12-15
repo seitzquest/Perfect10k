@@ -1,142 +1,88 @@
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# Claude/AI assistant files
-.claude
-
-# Python cache and bytecode
-__pycache__/
+*.backup
+*.bak
+*.cover
+*.crt
+*.csr
+*.db
+*.egg
+*.egg-info/
+*.json.cache
+*.key
+*.lock
+*.log
+*.pem
+*.pickle
+*.pid
+*.pid.lock
+*.pkl
 *.py[cod]
-*.pyo
+*.py[oc]
+*.pyc
 *.pyd
+*.pyo
+*.seed
 *.so
+*.swo
+*.swp
+*.tar
+*.temp
+*.tmp
+*~
+.DS_Store
+.DS_Store?
 .Python
+.Spotlight-V100
+.Trashes
+._*
+.cache
+.claude
+.coverage
+.coverage.*
+.eggs/
+.env
+.env.*.local
+.env.local
+.hypothesis/
+.idea/
+.installed.cfg
+.ipynb_checkpoints
+.mypy_cache/
+.pylint.d/
+.pytest_cache/
+.python-version
+.ruff_cache/
+.tox/
+.venv/
+.vscode/
+/var/log/
+ENV/
+Thumbs.db
+__pycache__/
 build/
+cache/
+certs/
+cloudflare.ini
+coverage.xml
 develop-eggs/
 dist/
 downloads/
 eggs/
-.eggs/
+ehthumbs.db
+env/
+htmlcov/
 lib/
 lib64/
+logs/
+node_modules/
+nosetests.xml
+npm-debug.log*
 parts/
 sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environment
-.venv/
-venv/
-ENV/
-env/
-
-# Package managers
+spatial_tiles/
+tiles/
 uv.lock
-*.lock
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# Application cache
-cache/
-*.json.cache
-
-# SSL certificates (generated locally)
-certs/
-*.pem
-*.key
-*.crt
-*.csr
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
-
-# OS files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Runtime and process files
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# Linting cache
-.ruff_cache/
-.mypy_cache/
-.pylint.d/
-
-# Test artifacts
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Node.js (if any JS tools are added)
-node_modules/
-npm-debug.log*
+var/
+venv/
+wheels/
 yarn-debug.log*
 yarn-error.log*
-
-# Server specific files
-cloudflare.ini
-*.pem
-*.key
-*.crt
-*.csr
-
-# Backup files
-*.backup
-*.bak
-
-# Server logs
-/var/log/
-logs/
-
-# Spatial tile storage files
-*.pkl
-*.pickle
-*.db
-tiles/
-spatial_tiles/
-
-*.tar

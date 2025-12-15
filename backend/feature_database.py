@@ -11,7 +11,8 @@ from typing import Any
 
 import networkx as nx
 from loguru import logger
-from spatial_grid import GridCell, SpatialGrid
+
+from backend.spatial_grid import GridCell, SpatialGrid
 
 
 class FeatureType(Enum):
@@ -484,7 +485,7 @@ class FeatureDatabase:
             )
 
             # Import BoundingBox here to avoid circular imports
-            from semantic_overlays import BoundingBox
+            from backend.semantic_overlays import BoundingBox
 
             bbox = BoundingBox(south=min_lat, west=min_lon, north=max_lat, east=max_lon)
 

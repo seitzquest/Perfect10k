@@ -26,7 +26,7 @@ from loguru import logger
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from core.spatial_tile_storage import SpatialTileStorage  # noqa: E402
+from backend.core.spatial_tile_storage import SpatialTileStorage  # noqa: E402
 
 
 def load_osm_area_with_geometry(lat: float, lon: float, radius: int = 8000) -> nx.MultiGraph:

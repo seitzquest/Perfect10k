@@ -6,7 +6,7 @@
 #   pre-commit run --all-files
 
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
+  - repo: git@github.com:astral-sh/ruff-pre-commit.git
     rev: v0.9.1
     hooks:
       # Run the formatter
@@ -18,13 +18,22 @@ repos:
         types_or: [python, pyi, jupyter, toml]
         args: [--fix]
 
-  - repo: https://github.com/RobertCraigie/pyright-python
+  - repo: git@github.com:RobertCraigie/pyright-python.git
     rev: v1.1.390
     hooks:
       - id: pyright
         additional_dependencies: []  # Add project dependencies here if needed
 
-  - repo: https://github.com/gitleaks/gitleaks
+  - repo: git@github.com:gitleaks/gitleaks.git
     rev: v8.22.1
     hooks:
       - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: deptry
+        name: deptry
+        entry: uv run deptry .
+        language: system
+        pass_filenames: false
+        always_run: true

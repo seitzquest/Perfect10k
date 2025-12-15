@@ -14,10 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from async_job_manager import job_manager
-from clean_router import CleanRouter
-from docker_cache_config import docker_cache
-from smart_cache_manager import cache_manager
+from backend.async_job_manager import job_manager
+from backend.clean_router import CleanRouter
+from backend.docker_cache_config import docker_cache
+from backend.smart_cache_manager import cache_manager
 
 
 async def cmd_info():

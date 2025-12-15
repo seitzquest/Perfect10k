@@ -11,11 +11,12 @@ from typing import Any
 
 import networkx as nx
 import numpy as np
-from feature_database import FeatureDatabase
-from interpretable_scorer import InterpretableScorer, ScoredCandidate
 from loguru import logger
-from smart_cache_manager import cache_manager
-from spatial_grid import SpatialGrid
+
+from backend.feature_database import FeatureDatabase
+from backend.interpretable_scorer import InterpretableScorer, ScoredCandidate
+from backend.smart_cache_manager import cache_manager
+from backend.spatial_grid import SpatialGrid
 
 
 @dataclass

@@ -25,15 +25,6 @@ dependencies = [
     "geohash2>=1.1",
     # Logging
     "loguru>=0.7.2",
-    "scikit-learn>=1.7.0",
-    "rtree>=1.4.0",
-    "httpx>=0.28.1",
-]
-
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.1.0",
-    "black>=23.11.0",
 ]
 
 [tool.setuptools]
@@ -62,3 +53,11 @@ ignore = [
 [tool.black]
 line-length = 100
 target-version = ['py310', 'py311', 'py312']
+
+[dependency-groups]
+dev = [
+    "deptry>=0.24.0",
+]
+
+[tool.deptry]
+# No special configuration needed - backend is now a proper Python package

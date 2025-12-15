@@ -16,8 +16,8 @@ from pathlib import Path
 # Add the backend directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from clean_router import CleanRouter
-from performance_profiler import log_performance_summary, profiler
+from backend.clean_router import CleanRouter
+from backend.performance_profiler import log_performance_summary, profiler
 
 
 def profile_route_generation():

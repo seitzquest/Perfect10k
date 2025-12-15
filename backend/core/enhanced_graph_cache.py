@@ -6,8 +6,9 @@ Integrates the new spatial tile system with existing graph loading.
 import time
 
 import networkx as nx
-from core.spatial_tile_storage import MAJOR_CITIES, SpatialTileStorage
 from loguru import logger
+
+from backend.core.spatial_tile_storage import MAJOR_CITIES, SpatialTileStorage
 
 
 class EnhancedGraphCache:

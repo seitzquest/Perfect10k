@@ -8,8 +8,9 @@ import pickle
 from dataclasses import dataclass
 
 import networkx as nx
-from core.poi_enrichment import POIEnricher
 from loguru import logger
+
+from backend.core.poi_enrichment import POIEnricher
 
 
 @dataclass

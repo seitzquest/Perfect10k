@@ -88,7 +88,7 @@ def get_route_builder():
     """Get route builder instance (lazy initialization for faster startup)."""
     global route_builder
     if route_builder is None:
-        from clean_router import CleanRouter
+        from backend.clean_router import CleanRouter
 
         route_builder = CleanRouter(get_overlay_manager())
     return route_builder
@@ -98,7 +98,7 @@ def get_overlay_manager():
     """Get overlay manager instance (lazy initialization for faster startup)."""
     global overlay_manager
     if overlay_manager is None:
-        from semantic_overlays import SemanticOverlayManager
+        from backend.semantic_overlays import SemanticOverlayManager
 
         overlay_manager = SemanticOverlayManager()
     return overlay_manager
@@ -229,7 +229,7 @@ async def start_session_async(request_data: StartRouteRequest, request: Request)
             )
         else:
             # Fallback: use smart cache manager for fast check
-            from smart_cache_manager import cache_manager
+            from backend.smart_cache_manager import cache_manager
 
             cache_available = cache_manager.has_cached_graph(request_data.lat, request_data.lon)  # type: ignore[attr-defined]
 
@@ -1108,7 +1108,7 @@ async def warm_cache(request_data: WarmCacheRequest):
     logger.info(f"Starting cache warming for {len(request_data.locations)} location(s)")
 
     # Import here to avoid startup delays
-    from async_job_manager import job_manager
+    from backend.async_job_manager import job_manager
 
     try:
         # Start job manager if not running

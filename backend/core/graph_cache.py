@@ -11,8 +11,9 @@ import time
 from pathlib import Path
 
 import networkx as nx
-from core.semantic_grid import SemanticGrid
 from loguru import logger
+
+from backend.core.semantic_grid import SemanticGrid
 
 
 class GraphCacheEntry:
