@@ -357,6 +357,9 @@ class AsyncJobManager:
             start_time = time.perf_counter()
 
             # Execute job function
+            if not callable(job.job_function):
+                raise ValueError(f"job_function must be callable, got {type(job.job_function)}")
+
             if asyncio.iscoroutinefunction(job.job_function):
                 job_result = await job.job_function(*job.args, **job.kwargs)
             else:
@@ -365,7 +368,11 @@ class AsyncJobManager:
 
                 # Create a proper callable wrapper
                 def sync_wrapper():
-                    return job.job_function(*job.args, **job.kwargs)  # type: ignore[misc]
+                    if not callable(job.job_function):
+                        raise ValueError(
+                            f"job_function must be callable, got {type(job.job_function)}"
+                        )
+                    return job.job_function(*job.args, **job.kwargs)
 
                 job_result = await loop.run_in_executor(self.thread_pool, sync_wrapper)
 

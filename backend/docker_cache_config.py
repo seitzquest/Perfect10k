@@ -13,9 +13,28 @@ import tarfile
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 from loguru import logger
+
+
+class DirectoryInfo(TypedDict):
+    """Type definition for directory information."""
+
+    path: str
+    size_mb: float
+    file_count: int
+    last_modified: float | None
+
+
+class CacheInfo(TypedDict):
+    """Type definition for cache information."""
+
+    base_directory: str
+    directories: dict[str, DirectoryInfo]
+    total_size_mb: float
+    total_files: int
+    is_docker_volume: bool
 
 
 class DockerCacheConfig:
@@ -42,12 +61,12 @@ class DockerCacheConfig:
 
         logger.info(f"🐳 Docker cache configured at {base_cache_dir}")
 
-    def get_cache_info(self) -> dict[str, Any]:
+    def get_cache_info(self) -> CacheInfo:
         """Get comprehensive cache information."""
-        info = {
+        info: CacheInfo = {
             "base_directory": str(self.base_cache_dir),
             "directories": {},
-            "total_size_mb": 0,
+            "total_size_mb": 0.0,
             "total_files": 0,
             "is_docker_volume": self._is_docker_volume(),
         }
@@ -55,21 +74,23 @@ class DockerCacheConfig:
         for name, path in self.cache_dirs.items():
             if path.exists():
                 size_mb, file_count = self._get_directory_stats(path)
-                info["directories"][name] = {
+                dir_info: DirectoryInfo = {
                     "path": str(path),
                     "size_mb": size_mb,
                     "file_count": file_count,
                     "last_modified": path.stat().st_mtime if path.exists() else None,
                 }
+                info["directories"][name] = dir_info
                 info["total_size_mb"] += size_mb
                 info["total_files"] += file_count
             else:
-                info["directories"][name] = {
+                dir_info_empty: DirectoryInfo = {
                     "path": str(path),
-                    "size_mb": 0,
+                    "size_mb": 0.0,
                     "file_count": 0,
                     "last_modified": None,
                 }
+                info["directories"][name] = dir_info_empty
 
         return info
 

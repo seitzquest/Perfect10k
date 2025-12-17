@@ -11,9 +11,17 @@ import functools
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from loguru import logger
+
+
+class ProfileStep(TypedDict):
+    """Type definition for a profiling step."""
+
+    name: str
+    elapsed_ms: float
+    timestamp: float
 
 
 class PerformanceProfiler:
@@ -21,22 +29,23 @@ class PerformanceProfiler:
 
     def __init__(self):
         self.timings: dict[str, list[float]] = {}
-        self.current_session = {}
-        self.session_start = None
+        self.current_session: dict[str, Any] | None = None
+        self.session_start: float | None = None
 
     def start_session(self, operation: str):
         """Start a new profiling session."""
         self.session_start = time.perf_counter()
+        steps: list[ProfileStep] = []
         self.current_session = {
             "operation": operation,
             "start_time": self.session_start,
-            "steps": [],
+            "steps": steps,
         }
         logger.info(f"🔍 PROFILING: Starting {operation}")
 
     def step(self, step_name: str):
         """Record a step in the current session."""
-        if self.session_start is None:
+        if self.session_start is None or self.current_session is None:
             return
         now = time.perf_counter()
         elapsed = (now - self.session_start) * 1000  # ms

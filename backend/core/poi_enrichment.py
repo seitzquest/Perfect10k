@@ -4,9 +4,20 @@ Fetches Points of Interest and semantic features from OSM to enhance route recom
 """
 
 import math
+from typing import TypedDict
 
 import osmnx as ox
 from loguru import logger
+
+
+class POI(TypedDict):
+    """Type definition for Point of Interest."""
+
+    lat: float
+    lon: float
+    features: list[str]
+    name: str
+    main_tag: str
 
 
 class POIEnricher:
@@ -18,7 +29,7 @@ class POIEnricher:
     """
 
     def __init__(self):
-        self.pois: list[dict] = []
+        self.pois: list[POI] = []
         self.spatial_index: dict[tuple[int, int], list[int]] = {}  # Grid -> POI indices
         self.grid_size = 0.001  # ~100m grid for spatial indexing
 
@@ -88,7 +99,7 @@ class POIEnricher:
             logger.warning(f"Failed to fetch POIs: {e}")
             self.pois = []
 
-    def _extract_poi_info(self, row, main_tag: str) -> dict | None:
+    def _extract_poi_info(self, row, main_tag: str) -> POI | None:
         """Extract POI information from OSM data."""
         try:
             # Get centroid for point/polygon geometries
@@ -99,7 +110,7 @@ class POIEnricher:
                 lat, lon = row.geometry.y, row.geometry.x
 
             # Extract semantic features
-            poi = {
+            poi: POI = {
                 "lat": lat,
                 "lon": lon,
                 "features": [],

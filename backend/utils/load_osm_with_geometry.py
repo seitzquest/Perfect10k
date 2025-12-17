@@ -100,11 +100,8 @@ def load_osm_bbox_with_geometry(
 
     try:
         # Load graph with parameters to preserve geometry
-        graph = ox.graph_from_bbox(  # pyright: ignore[reportCallIssue]
-            north,
-            south,
-            east,
-            west,
+        graph = ox.graph_from_bbox(
+            (north, south, east, west),
             network_type="walk",
             retain_all=True,
             truncate_by_edge=True,

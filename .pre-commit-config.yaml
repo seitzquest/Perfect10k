@@ -18,11 +18,14 @@ repos:
         types_or: [python, pyi, jupyter, toml]
         args: [--fix]
 
-  - repo: git@github.com:RobertCraigie/pyright-python.git
-    rev: v1.1.390
+  - repo: local
     hooks:
-      - id: pyright
-        additional_dependencies: []  # Add project dependencies here if needed
+      - id: ty
+        name: ty
+        entry: ty check
+        language: system
+        types: [python]
+        pass_filenames: false
 
   - repo: git@github.com:gitleaks/gitleaks.git
     rev: v8.22.1

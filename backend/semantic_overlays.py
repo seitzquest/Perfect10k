@@ -8,9 +8,28 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 import requests
 from loguru import logger
+
+
+class FeatureStyle(TypedDict, total=False):
+    """Type definition for feature style configuration."""
+
+    color: str
+    fillColor: str
+    fillOpacity: float
+    weight: int
+    opacity: float
+
+
+class FeatureConfig(TypedDict):
+    """Type definition for feature configuration."""
+
+    overpass_query: str
+    style: FeatureStyle
+
 
 # Removed semantic_scoring dependency - now using interpretable_scorer
 
@@ -55,7 +74,7 @@ class SemanticOverlayManager:
     def __post_init__(self):
         """Initialize feature configurations."""
         # Feature type configurations
-        self.feature_configs = {
+        self.feature_configs: dict[str, FeatureConfig] = {
             "forests": {
                 "overpass_query": """
                     [out:json][timeout:30];
